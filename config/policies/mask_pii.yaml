@@ -1,0 +1,15 @@
+id: mask_pii_low_clearance
+description: "PII must be masked for low clearance users."
+
+match:
+  dataset: customers
+  fields:
+    sensitivity: pii
+
+context:
+  requester_clearance: low
+
+action:
+  mask: true
+  ttl: 45m
+  reason: "Mask PII for low-clearance users."

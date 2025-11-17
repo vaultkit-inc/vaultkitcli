@@ -1,0 +1,13 @@
+customers:
+  datasource: primary_pg
+  fields:
+    email: pii
+    total_spend: financial
+    country: internal
+
+orders:
+  datasource: primary_pg
+  fields:
+    order_id: internal
+    customer_id: internal
+    amount: financial

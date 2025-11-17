@@ -1,0 +1,11 @@
+id: orders_financial_requires_approval
+description: "Financial data for orders requires approval from approvers."
+
+match:
+  dataset: orders
+
+action:
+  require_approval: true
+  approver_role: analyst
+  reason: "Access to orders financial data requires approval."
+  ttl: "1h"
