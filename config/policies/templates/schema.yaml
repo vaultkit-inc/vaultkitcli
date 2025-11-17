@@ -1,0 +1,27 @@
+id: <string>                     # unique policy ID
+description: <string>            # human-readable explanation (required)
+
+match:                           # What data this policy applies to
+  dataset: <dataset_name>        # optional
+  fields:                        # optional — field sensitivity logic
+    sensitivity: <tag>           # pii, financial, internal, etc.
+    contains: [<tag>, ...]       # if multiple sensitivity types appear together
+    any: [field1, field2]        # if query includes any of these fields
+    all: [field1, field2]        # if query must include all fields
+
+context:                         # Who is requesting & under what circumstances
+  requester_role: <role>
+  requester_clearance: <int>
+  requester_region: <region>
+  dataset_region: <region>
+  time:
+    after: "HH:MM"
+    before: "HH:MM"
+  environment: production|staging|dev
+
+action:                          # What decision to enforce if conditions match
+  deny: true | false
+  require_approval: true | false
+  mask: true | false
+  approver_role: <role>          # only relevant if require_approval==true
+  reason: <string>               # always required for deny / approval

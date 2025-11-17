@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+# require "vkit"
+require_relative "../lib/vkit"
+Vkit::CLI::BaseCLI.start(ARGV)
