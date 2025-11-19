@@ -27,7 +27,7 @@ module Vkit
           orch = Vkit::Core::RequestOrchestrator.new(
             policies_dir:  options[:policies_dir] || "config/policies",
             registry_path: options[:registry]     || "datasets/registry.yaml",
-            funl_url: @funl_url || (ENV["FUNL_URL"] || "http://localhost:8080")
+            funl_url: @funl_url || (ENV["FUNL_URL"] || "https://kizzie-unfretting-lastly.ngrok-free.dev")
           )
 
           result = orch.run_inline(

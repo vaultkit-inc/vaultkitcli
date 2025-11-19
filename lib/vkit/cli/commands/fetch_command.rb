@@ -10,7 +10,7 @@ module Vkit
     module Commands
       class FetchCommand
         def initialize(funl_url: ENV["FUNL_URL"])
-          @funl_url = funl_url || "http://localhost:8080"
+          @funl_url = funl_url
         end
 
         def call(grant_id:, format: "json")

@@ -2,6 +2,7 @@ require "sqlite3"
 require "json"
 require "securerandom"
 require "time"
+require_relative 'jwt_encoder'
 
 module Vkit
   module Core
@@ -41,11 +42,16 @@ module Vkit
       def issue!(request:, decision:, policy_id:, reason:, ttl_seconds:)
         now        = Time.now.utc
         id         = "grant_" + SecureRandom.hex(8)
-        session    = "sess_" + SecureRandom.hex(24)
         expires_at = now + ttl_seconds.to_i
 
         fields_json      = JSON.dump(request[:fields])
         mask_fields_json = JSON.dump(request[:mask_fields] || [])
+
+        session = Vkit::Core::JwtEncoder.issue_session_token(
+          user: request[:requester],
+          grant_id: id,
+          expires_at: expires_at
+        )
 
         @db.execute(
           <<~SQL,
