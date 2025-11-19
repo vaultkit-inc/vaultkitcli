@@ -5,7 +5,7 @@ require "json"
 module Vkit
   module Core
     class FunlClient
-      DEFAULT_BASE_URL = ENV["FUNL_URL"] || "http://localhost:8080"
+      DEFAULT_BASE_URL = ENV["FUNL_URL"] || "https://kizzie-unfretting-lastly.ngrok-free.dev"
 
       def initialize(base_url: DEFAULT_BASE_URL)
         @base_url = base_url.chomp("/")
@@ -17,13 +17,14 @@ module Vkit
       # Headers: Authorization: Bearer <jwt>
       # Returns: rows (Array<Hash>) or []
       def execute(aql:, bearer:, datasource:, options: {})
-        return mock_execute(aql) if @use_mock
+        # return mock_execute(aql) if @use_mock
 
+        aql_payload = JSON.parse(JSON.dump(aql))
+        aql_payload["mask_fields"] = options[:mask_fields] if options[:mask_fields]
         body = {
-          aql: aql,
+          aql: aql_payload,
           datasource: datasource
         }
-        body[:mask_fields] = options[:mask_fields] if options[:mask_fields]
 
         uri = URI("#{@base_url}/execute")
         req = Net::HTTP::Post.new(uri)
@@ -32,6 +33,7 @@ module Vkit
         req.body = JSON.dump(body)
 
         res = http_request(uri, req)
+        puts uri
         case res.code.to_i
         when 200
           body = JSON.parse(res.body)

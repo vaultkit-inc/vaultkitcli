@@ -87,7 +87,7 @@ module Vkit
       desc "fetch --grant ID", "Fetch data from Funl using a valid grant"
       option :grant, type: :string, required: true
       option :format, type: :string, default: "json", enum: %w[json table]
-      option :funl_url, type: :string, default: ENV["FUNL_URL"] || "http://localhost:8080"
+      option :funl_url, type: :string, default: ENV["FUNL_URL"] || "https://kizzie-unfretting-lastly.ngrok-free.dev"
       def fetch
         grant_id = options[:grant]
         format   = options[:format]
