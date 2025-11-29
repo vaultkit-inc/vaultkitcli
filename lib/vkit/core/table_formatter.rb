@@ -5,17 +5,31 @@ module Vkit
         return puts "(no rows)" if rows.nil? || rows.empty?
 
         headers = rows.first.keys
-        col_widths = headers.map { |h| [h.length, *rows.map { |r| r[h].to_s.length }].max }
 
-        # header row
-        line = headers.map.with_index { |h, i| h.ljust(col_widths[i]) }.join(" | ")
-        puts line
-        puts "-" * line.length
-
-        # data rows
-        rows.each do |row|
-          puts headers.map.with_index { |h, i| row[h].to_s.ljust(col_widths[i]) }.join(" | ")
+        # Calculate column widths
+        col_widths = headers.map do |h|
+          [h.length, *rows.map { |r| r[h].to_s.length }].max
         end
+
+        # Builders
+        def self.border(col_widths)
+          "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+        end
+
+        def self.row(values, col_widths)
+          "|" + values.map.with_index { |v, i| " #{v.to_s.ljust(col_widths[i])} " }.join("|") + "|"
+        end
+
+        # Print table
+        puts border(col_widths)
+        puts row(headers, col_widths)
+        puts border(col_widths)
+
+        rows.each do |row|
+          puts row(row.values_at(*headers), col_widths)
+        end
+
+        puts border(col_widths)
       end
     end
   end

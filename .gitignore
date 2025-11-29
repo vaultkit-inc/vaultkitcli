@@ -1,0 +1,43 @@
+# --------------------
+# OS / Editor junk
+# --------------------
+.DS_Store
+*.swp
+*.swo
+
+# --------------------
+# Ruby / Bundler
+# --------------------
+/.bundle
+/vendor/bundle
+/log
+/tmp
+*.log
+
+# --------------------
+# VaultKit Runtime Data
+# --------------------
+/data/
+/*.db
+*.db-shm
+*.db-wal
+
+# SQLite
+*.sqlite
+*.sqlite3
+
+# --------------------
+# Keys & Secrets
+# --------------------
+keys/
+*.pem
+*.key
+*.pub
+*.crt
+.env
+.env.*
+
+# --------------------
+# macOS
+# --------------------
+._*
