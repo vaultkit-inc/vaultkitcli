@@ -16,11 +16,13 @@ module Vkit
       # Body: { aql: <json>, options: { … } }
       # Headers: Authorization: Bearer <jwt>
       # Returns: rows (Array<Hash>) or []
+
       def execute(aql:, bearer:, datasource:, options: {})
         # return mock_execute(aql) if @use_mock
 
         aql_payload = JSON.parse(JSON.dump(aql))
         aql_payload["mask_fields"] = options[:mask_fields] if options[:mask_fields]
+
         body = {
           aql: aql_payload,
           datasource: datasource
@@ -33,13 +35,14 @@ module Vkit
         req.body = JSON.dump(body)
 
         res = http_request(uri, req)
-        puts uri
+
         case res.code.to_i
         when 200
-          body = JSON.parse(res.body)
-          body["rows"] || []
+          JSON.parse(res.body)
+
         when 401
           raise "Funl unauthorized"
+
         else
           raise "Funl error (#{res.code}) #{res.body}"
         end
@@ -48,7 +51,8 @@ module Vkit
       private
 
       def http_request(uri, req)
-        Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") do |http|
+        Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https",
+                        verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
           http.request(req)
         end
       end

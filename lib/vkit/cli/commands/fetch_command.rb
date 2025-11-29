@@ -35,7 +35,7 @@ module Vkit
           datasource = resolver.resolve(datasource_id)
 
           client = Vkit::Core::FunlClient.new(base_url: @funl_url)
-          rows = client.execute(
+          response = client.execute(
             aql: {
               "source_table" => grant[:dataset],
               "columns" => grant[:fields]
@@ -46,8 +46,10 @@ module Vkit
               mask_fields: grant[:mask_fields]
             }
           )
+          rows = response["rows"] || []
+          meta = response["meta"] || {}
 
-          print_result(rows, format)
+          print_result(rows, meta, format)
         rescue => e
           puts "❌ Fetch failed: #{e.message}"
           exit 1
@@ -59,8 +61,10 @@ module Vkit
           Time.parse(grant[:expires_at]) <= Time.now
         end
 
-        def print_result(rows, format)
+        def print_result(rows, meta, format)
           puts "✅ OK — rows: #{rows.size}"
+          puts "ℹ️  Query Metadata:"
+          puts JSON.pretty_generate(meta)
 
           case format
           when "json"

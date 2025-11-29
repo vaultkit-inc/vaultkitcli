@@ -8,6 +8,9 @@ module Vkit
       PRIVATE_KEY_PATH = ENV["VKIT_PRIVATE_KEY"]
 
       def self.private_key
+        raise "Missing VKIT_PRIVATE_KEY env var" unless PRIVATE_KEY_PATH
+        raise "Private key not found: #{PRIVATE_KEY_PATH}" unless File.exist?(PRIVATE_KEY_PATH)
+
         OpenSSL::PKey::RSA.new(File.read(PRIVATE_KEY_PATH))
       end
 
