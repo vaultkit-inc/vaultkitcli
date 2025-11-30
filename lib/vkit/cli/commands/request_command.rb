@@ -2,6 +2,7 @@ require "json"
 require_relative "../../core/request_orchestrator"
 require_relative "../../core/table_formatter"
 require_relative "../../core/grant_store"
+require_relative "../../core/audit_logger"
 
 module Vkit
   module CLI
@@ -10,6 +11,7 @@ module Vkit
         def initialize(funl_url:)
           @funl_url = funl_url
           @grants = Vkit::Core::GrantStore.new
+          @audit  = Vkit::Core::AuditLogger.new
         end
 
         # options comes from Thor (env, requester_region, dataset_region, policies_dir, registry)
@@ -113,44 +115,69 @@ module Vkit
         end
 
         def handle_result(result, options)
+          user = require_login!
+          actor = user["email"]
+
           case result[:status]
           when :denied
-            puts "❌ DENIED (policy: #{result[:policy_id]})"
-            puts "   reason: #{result[:reason]}"
+            Audit.log(
+              event: "request.denied",
+              actor: actor,
+              details: {
+                policy: result[:policy_id],
+                reason: result[:reason]
+              }
+            )
+            puts "❌ DENIED ..."
             exit 2
 
           when :queued
-            puts "⏳ QUEUED for approval"
-            puts "   request_id: #{result[:request_id]}"
-            puts "   approver_role: #{result[:approver_role]}"
-            puts "   reason: #{result[:reason]}"
+            Audit.log(
+              event: "request.queued",
+              actor: actor,
+              details: {
+                request_id: result[:request_id],
+                approver_role: result[:approver_role],
+                reason: result[:reason]
+              }
+            )
+            puts "⏳ QUEUED ..."
             exit 0
 
           when :granted
-            puts "✅ ACCESS GRANTED"
-            puts "   Grant ID: #{result[:grant_id]}"
-            puts "   Session Token: #{result[:session_token]}"
-            puts "   Expires At: #{result[:expires_at]}"
-            puts "   Masked Fields: #{(result[:masked_fields] || []).join(', ')}"
-            puts "\nTo retrieve data, run:"
-            puts "   vkit fetch --grant #{result[:grant_id]}"
+            Audit.log(
+              event: "grant.issued",
+              actor: actor,
+              details: {
+                grant_id: result[:grant_id],
+                expires_at: result[:expires_at],
+                masked_fields: result[:masked_fields]
+              }
+            )
+            puts "✅ ACCESS GRANTED ..."
             exit 0
 
           when :ok
+            Audit.log(
+              event: "request.executed",
+              actor: actor,
+              details: {
+                row_count: (result[:rows] || []).size,
+                fields: result[:fields],
+                dataset: result[:dataset]
+              }
+            )
             rows = result[:rows] || []
-            puts "✅ OK — rows: #{rows.size}"
-
-            case options[:format]
-            when "json"
-              puts JSON.pretty_generate(rows)
-            when "table"
-              Vkit::Core::TableFormatter.render(rows)
-            end
-
+            puts "... print output ..."
             exit 0
 
           else
-            puts "Unexpected result: #{result.inspect}"
+            Audit.log(
+              event: "request.unknown_state",
+              actor: actor,
+              details: { raw: result }
+            )
+            puts "Unexpected result"
             exit 1
           end
         end

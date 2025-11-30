@@ -48,6 +48,52 @@ module Vkit
         end
       end
 
+      def introspect_tables(datasource:, bearer:)
+        body = {
+          datasource:   datasource,
+          kind:         "tables"
+        }
+
+        uri = URI("#{@base_url}/introspect")
+        req = Net::HTTP::Post.new(uri)
+        req["Content-Type"] = "application/json"
+        req["Authorization"] = "Bearer #{bearer}" if bearer
+        req.body = JSON.dump(body)
+
+        res = http_request(uri, req)
+
+        case res.code.to_i
+        when 200
+          parsed = JSON.parse(res.body)
+          parsed["rows"] || []
+        else
+          raise "Funl introspection error (#{res.code}) #{res.body}"
+        end
+      end
+      def introspect_columns(datasource:, table:, bearer:)
+        body = {
+          datasource:   datasource,
+          kind:         "columns",
+          table:        table
+        }
+
+        uri = URI("#{@base_url}/introspect")
+        req = Net::HTTP::Post.new(uri)
+        req["Content-Type"] = "application/json"
+        req["Authorization"] = "Bearer #{bearer}" if bearer
+        req.body = JSON.dump(body)
+
+        res = http_request(uri, req)
+
+        case res.code.to_i
+        when 200
+          parsed = JSON.parse(res.body)
+          parsed["rows"] || []
+        else
+          raise "Funl introspection error (#{res.code}) #{res.body}"
+        end
+      end
+
       private
 
       def http_request(uri, req)

@@ -129,6 +129,11 @@ module Vkit
           Commands::DatasourceCommand.new.get(id)
         end
       }
+
+      desc "scan DATASOURCE_ID", "Scan datasource and auto-classify fields"
+      def scan(ds_id)
+        Vkit::CLI::Commands::ScanCommand.new.call(ds_id)
+      end
     end
   end
 end

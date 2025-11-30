@@ -23,6 +23,17 @@ module Vkit
 
         JWT.encode(payload, private_key, "RS256")
       end
+
+      def self.issue_internal_token(role:, datasource:, expires_at:)
+        payload = {
+          sub: "vaultkit-internal",
+          role: role,
+          datasource: datasource,
+          exp: expires_at.to_i
+        }
+
+        JWT.encode(payload, private_key, "RS256")
+      end
     end
   end
 end
