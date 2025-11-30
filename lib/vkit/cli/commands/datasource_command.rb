@@ -1,6 +1,7 @@
 require "json"
 require_relative "../../core/datasource_store"
 require_relative "../../core/credential_store"
+require_relative "../../core/audit_logger"
 
 module Vkit
   module CLI
@@ -13,10 +14,11 @@ module Vkit
         end
 
         ####################################################################
-        # Add a new datasource (MVP: store credentials directly)
+        # ADD DATASOURCE
         ####################################################################
         def add(id:, engine:, username:, password:, config:)
-          require_admin!
+          user = require_admin!
+          actor = user["email"]
 
           config_hash = config ? JSON.parse(config) : {}
 
@@ -28,19 +30,40 @@ module Vkit
             config: config_hash
           )
 
+          # AUDIT EVENT
+          Vkit::Core::AuditLogger.log(
+            event: "datasource.created",
+            actor: actor,
+            details: {
+              id: id,
+              engine: engine,
+              config_keys: config_hash.keys
+            }
+          )
+
           puts "✅ Datasource created:"
           print_datasource(ds)
+
         rescue => e
           puts "❌ Failed to add datasource"
           puts e.message
+
+          # AUDIT FAILURE
+          Vkit::Core::AuditLogger.log(
+            event: "datasource.create_failed",
+            actor: actor,
+            details: { id: id, error: e.message }
+          )
+
           exit 1
         end
 
         ####################################################################
-        # List (redacted)
+        # LIST
         ####################################################################
         def list
-          require_admin!
+          user = require_admin!
+          actor = user["email"]
 
           rows = @store.list
           puts "📦 Datasources (#{rows.size}):"
@@ -48,34 +71,64 @@ module Vkit
             print_datasource(ds)
             puts "-" * 40
           end
+
+          # AUDIT
+          Vkit::Core::AuditLogger.log(
+            event: "datasource.listed",
+            actor: actor,
+            details: { count: rows.size }
+          )
+
         rescue => e
           puts "❌ Failed to list datasources: #{e.message}"
+
+          Vkit::Core::AuditLogger.log(
+            event: "datasource.list_failed",
+            actor: actor,
+            details: { error: e.message }
+          )
           exit 1
         end
 
         ####################################################################
-        # Get (redacted)
+        # GET (view)
         ####################################################################
         def get(id)
-          require_admin!
+          user = require_admin!
+          actor = user["email"]
 
           ds = @store.fetch(id)
           raise "Datasource not found: #{id}" unless ds
 
           print_datasource(ds)
+
+          # AUDIT
+          Vkit::Core::AuditLogger.log(
+            event: "datasource.viewed",
+            actor: actor,
+            details: { id: id, engine: ds[:engine] }
+          )
+
         rescue => e
           puts "❌ Failed to fetch datasource: #{e.message}"
+
+          Vkit::Core::AuditLogger.log(
+            event: "datasource.view_failed",
+            actor: actor,
+            details: { id: id, error: e.message }
+          )
+
           exit 1
         end
 
         ####################################################################
-        # Helper Methods
+        # Helpers
         ####################################################################
         private
 
         def require_admin!
           creds = Vkit::Core::CredentialStore.new
-          user = creds.load_user
+          user  = creds.load_user
           raise "Not logged in. Run: vkit login" if user.nil?
 
           unless user["role"] == "admin"

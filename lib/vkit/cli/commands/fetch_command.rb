@@ -4,6 +4,7 @@ require_relative "../../core/grant_store"
 require_relative "../../core/table_formatter"
 require_relative "../../core/dataset_registry"
 require_relative "../../core/credential_resolver"
+require_relative "../../core/audit_logger"
 
 module Vkit
   module CLI
@@ -18,10 +19,12 @@ module Vkit
           user  = creds.load_user
           raise "Not logged in. Run: vkit login" if user.nil?
 
+          actor = user["email"]
+
           grant = Vkit::Core::GrantStore.new.fetch(grant_id)
           raise "Grant not found: #{grant_id}" unless grant
 
-          if grant[:requester] != user["email"]
+          if grant[:requester] != actor
             raise "Access denied: you do not have permission to use this grant"
           end
 
@@ -31,6 +34,7 @@ module Vkit
 
           dataset_info  = Vkit::Core::DatasetRegistry.load(grant[:dataset])
           datasource_id = dataset_info[:datasource]
+
           resolver = Vkit::Core::CredentialResolver.new
           datasource = resolver.resolve(datasource_id)
 
@@ -46,11 +50,39 @@ module Vkit
               mask_fields: grant[:mask_fields]
             }
           )
+
           rows = response["rows"] || []
           meta = response["meta"] || {}
 
+          # --------------------------
+          # AUDIT LOG: fetch event
+          # --------------------------
+          Vkit::Core::AuditLogger.log(
+            event: "fetch.executed",
+            actor: actor,
+            details: {
+              grant_id: grant_id,
+              dataset: grant[:dataset],
+              fields: grant[:fields],
+              masked_fields: grant[:mask_fields],
+              datasource: datasource_id,
+              row_count: rows.size,
+              funl_url: @funl_url
+            }
+          )
+
           print_result(rows, meta, format)
+
         rescue => e
+          # audit failure too
+          Vkit::Core::AuditLogger.log(
+            event: "fetch.failed",
+            actor: actor,
+            details: {
+              grant_id: grant_id,
+              error: e.message
+            }
+          )
           puts "❌ Fetch failed: #{e.message}"
           exit 1
         end
