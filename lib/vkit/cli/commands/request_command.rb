@@ -11,7 +11,6 @@ module Vkit
         def initialize(funl_url:)
           @funl_url = funl_url
           @grants = Vkit::Core::GrantStore.new
-          @audit  = Vkit::Core::AuditLogger.new
         end
 
         # options comes from Thor (env, requester_region, dataset_region, policies_dir, registry)
@@ -37,7 +36,8 @@ module Vkit
             options: {
               environment:      options[:env],
               requester_region: options[:requester_region],
-              dataset_region:   options[:dataset_region]
+              dataset_region:   options[:dataset_region],
+              requester_clearance: options[:requester_clearance]
             }
           )
 
@@ -115,72 +115,121 @@ module Vkit
         end
 
         def handle_result(result, options)
-          user = require_login!
+          user  = require_login!
           actor = user["email"]
-
+        
           case result[:status]
+        
+          # ---------------------------------------------------------
+          # ❌ DENIED
+          # ---------------------------------------------------------
           when :denied
-            Audit.log(
+            Vkit::Core::AuditLogger.log(
               event: "request.denied",
               actor: actor,
               details: {
-                policy: result[:policy_id],
-                reason: result[:reason]
+                policy_id: result[:policy_id],
+                reason:    result[:reason]
               }
             )
-            puts "❌ DENIED ..."
+        
+            puts "❌ DENIED (policy: #{result[:policy_id]})"
+            puts "   reason: #{result[:reason]}"
             exit 2
-
+        
+          # ---------------------------------------------------------
+          # ⏳ QUEUED FOR APPROVAL
+          # ---------------------------------------------------------
           when :queued
-            Audit.log(
-              event: "request.queued",
+            Vkit::Core::AuditLogger.log(
+              event: "request.queued_for_approval",
               actor: actor,
               details: {
-                request_id: result[:request_id],
+                request_id:    result[:request_id],
                 approver_role: result[:approver_role],
-                reason: result[:reason]
+                reason:        result[:reason]
               }
             )
-            puts "⏳ QUEUED ..."
+        
+            puts "⏳ QUEUED for approval"
+            puts "   request_id: #{result[:request_id]}"
+            puts "   approver_role: #{result[:approver_role]}"
+            puts "   reason: #{result[:reason]}"
+            puts "\nAn approver must review this request."
             exit 0
-
+        
+          # ---------------------------------------------------------
+          # ✅ ACCESS GRANTED (but not yet executed)
+          # ---------------------------------------------------------
           when :granted
-            Audit.log(
+            Vkit::Core::AuditLogger.log(
               event: "grant.issued",
               actor: actor,
               details: {
-                grant_id: result[:grant_id],
-                expires_at: result[:expires_at],
+                grant_id:      result[:grant_id],
+                session_token: result[:session_token],
+                expires_at:    result[:expires_at],
                 masked_fields: result[:masked_fields]
               }
             )
-            puts "✅ ACCESS GRANTED ..."
+        
+            puts "✅ ACCESS GRANTED"
+            puts "   Grant ID: #{result[:grant_id]}"
+            puts "   Expires At: #{result[:expires_at]}"
+            if (mask = result[:masked_fields]) && mask.any?
+              puts "   Masked Fields: #{mask.join(', ')}"
+            else
+              puts "   Masked Fields: none"
+            end
+        
+            puts "\nTo execute and retrieve the data, run:"
+            puts "   vkit fetch --grant #{result[:grant_id]}"
             exit 0
-
+        
+          # ---------------------------------------------------------
+          # ✅ OK (already executed)
+          # ---------------------------------------------------------
           when :ok
-            Audit.log(
+            rows = result[:rows] || []
+        
+            Vkit::Core::AuditLogger.log(
               event: "request.executed",
               actor: actor,
               details: {
-                row_count: (result[:rows] || []).size,
-                fields: result[:fields],
-                dataset: result[:dataset]
+                row_count: rows.size,
+                fields:    result[:fields],
+                dataset:   result[:dataset]
               }
             )
-            rows = result[:rows] || []
-            puts "... print output ..."
+        
+            puts "✅ OK — #{rows.size} rows"
+        
+            case options[:format]
+            when "json"
+              puts JSON.pretty_generate(rows)
+            when "table"
+              Vkit::Core::TableFormatter.render(rows)
+            else
+              puts rows.inspect
+            end
+        
             exit 0
-
+        
+          # ---------------------------------------------------------
+          # UNKNOWN STATE
+          # ---------------------------------------------------------
           else
-            Audit.log(
+            Vkit::Core::AuditLogger.log(
               event: "request.unknown_state",
               actor: actor,
               details: { raw: result }
             )
-            puts "Unexpected result"
+        
+            puts "❓ Unexpected result state:"
+            puts result.inspect
             exit 1
           end
-        end
+        end        
       end
     end
   end

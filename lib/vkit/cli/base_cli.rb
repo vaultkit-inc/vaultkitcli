@@ -4,6 +4,7 @@ require_relative "commands/request_command"
 require_relative "commands/approval_command"
 require_relative "commands/fetch_command"
 require_relative "commands/datasource_command"
+require_relative "commands/scan_command"
 
 module Vkit
   module CLI
@@ -132,7 +133,7 @@ module Vkit
 
       desc "scan DATASOURCE_ID", "Scan datasource and auto-classify fields"
       def scan(ds_id)
-        Vkit::CLI::Commands::ScanCommand.new.call(ds_id)
+       Commands::ScanCommand.new.call(ds_id)
       end
     end
   end

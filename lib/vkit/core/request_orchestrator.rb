@@ -18,13 +18,17 @@ module Vkit
         @funl_url      = funl_url
       end
 
+      # ------------------------------------------------------------
+      # Main entry point
+      # ------------------------------------------------------------
       def run_inline(aql_json:, options: {})
         creds   = Vkit::Core::CredentialStore.new
         token   = creds.load_token
         user    = creds.load_user
         raise "Not logged in. Run: vkit login" if token.nil? || user.nil?
 
-        registry = YAML.load_file(@registry_path)
+        # Load registry
+        registry = YAML.load_file(@registry_path) || {}
         engine   = Vkit::Core::PolicyEngine.new(policy_dir: @policies_dir, registry: registry)
         grant_store = Vkit::Core::GrantStore.new
 
@@ -34,27 +38,31 @@ module Vkit
 
         fields = extract_fields(aql)
 
+        # ----------------------------------------------------------
         # Build request context
+        # ----------------------------------------------------------
         req_ctx = {
           dataset: dataset,
           fields: fields,
-          requester_role: user["role"],
-          requester_clearance: options[:requester_clearance] || user["clearance"],
           requester: user["email"],
+          requester_role: user["role"],
+          requester_clearance: user["clearance"],
           requester_region: options[:requester_region],
           dataset_region: options[:dataset_region],
           environment: options[:environment] || "production",
           time: Time.now
         }
 
-        # AUDIT: Request Received
+        # AUDIT: request received
         AuditLogger.log(
           event: "request.received",
           actor: user["email"],
           details: req_ctx
         )
 
-        # Check for existing grant
+        # ----------------------------------------------------------
+        # 1. Check for valid existing grant
+        # ----------------------------------------------------------
         if (grant = grant_store.find_valid(request: req_ctx))
           AuditLogger.log(
             event: "grant.reused",
@@ -68,10 +76,11 @@ module Vkit
           )
 
           client = Vkit::Core::FunlClient.new(base_url: @funl_url)
+
           rows = client.execute(
             aql: aql,
-            bearer: token,
-            options: { session_token: grant[:session_token] }
+            bearer: grant[:session_token], # session token now controls field access
+            datasource: options[:datasource]
           )
 
           return {
@@ -83,7 +92,9 @@ module Vkit
           }
         end
 
-        # Policy evaluation
+        # ----------------------------------------------------------
+        # 2. Policy evaluation
+        # ----------------------------------------------------------
         decision = engine.evaluate(req_ctx)
 
         AuditLogger.log(
@@ -92,7 +103,14 @@ module Vkit
           details: decision.merge(dataset: dataset, fields: fields)
         )
 
+        # ----------------------------------------------------------
+        # Handle policy actions
+        # ----------------------------------------------------------
         case decision[:action]
+
+        # --------------------------------------------------------
+        # DENY
+        # --------------------------------------------------------
         when "deny"
           AuditLogger.log(
             event: "request.denied",
@@ -111,6 +129,9 @@ module Vkit
             reason: decision[:reason]
           }
 
+        # --------------------------------------------------------
+        # REQUIRE APPROVAL
+        # --------------------------------------------------------
         when "require_approval"
           queue = Vkit::Core::ApprovalStore.new
           req_id = queue.enqueue(
@@ -137,9 +158,21 @@ module Vkit
             reason: decision[:reason]
           }
 
+        # --------------------------------------------------------
+        # ALLOW/MASK (policy-driven masking)
+        # --------------------------------------------------------
         when "allow", "mask"
-          ttl = decision[:ttl] || 3600
+          ttl = decision[:ttl] || 3600 # 1 hour default
 
+          # Compute masked fields (policy-driven logic)
+          mask_fields = Vkit::Core::Masking.resolve_masks(
+            dataset: dataset,
+            requested_fields: fields,
+            registry: registry,
+            decision: decision
+          )
+
+          # Issue grant
           grant = grant_store.issue!(
             request: req_ctx,
             decision: decision[:action],
@@ -147,13 +180,6 @@ module Vkit
             reason: decision[:reason],
             ttl_seconds: ttl
           )
-
-          mask_fields = decision[:action] == "mask" ?
-                          Vkit::Core::Masking.mask_fields(
-                            dataset: req_ctx[:dataset],
-                            requested_fields: req_ctx[:fields],
-                            registry: registry
-                          ) : []
 
           grant_store.update_mask_fields!(grant[:id], mask_fields)
 
@@ -177,23 +203,30 @@ module Vkit
             expires_at: grant[:expires_at],
             masked_fields: mask_fields
           }
+
         else
           raise "Unknown decision: #{decision.inspect}"
         end
       end
 
+      # ------------------------------------------------------------
+      # Helpers
+      # ------------------------------------------------------------
       private
 
       def extract_fields(aql)
         fields = []
-        (aql["columns"] || []).each { |c| fields << strip_table_prefix(c.to_s) }
-        (aql["aggregates"] || []).each { |agg| fields << strip_table_prefix(agg["field"].to_s) if agg["field"] }
+        (aql["columns"] || []).each { |c| fields << strip(c.to_s) }
+        (aql["aggregates"] || []).each do |agg|
+          fields << strip(agg["field"].to_s) if agg["field"]
+        end
         fields.uniq
       end
 
-      def strip_table_prefix(fq)
-        fq.include?(".") ? fq.split(".", 2).last : fq
+      def strip(v)
+        v.include?(".") ? v.split(".", 2).last : v
       end
     end
   end
 end
+
