@@ -12,7 +12,6 @@ module Vkit
         def initialize(server: nil, email: nil)
           @server = server || Vkit::Core::AuthClient::DEFAULT_BASE_URL
           @email  = email
-          @audit  = Vkit::Core::AuditLogger.new
         end
 
         def call
@@ -30,10 +29,10 @@ module Vkit
 
           save_credentials(res[:token], res[:user])
 
-          @audit.log(
-            event_type: "auth.login.success",
+          Vkit::Core::AuditLogger.log(
+            event: "auth.login.success",
             actor: email,
-            metadata: {
+            details: {
               server: @server,
               role: res[:user]["role"],
               org: res[:user]["organization_id"]
@@ -42,10 +41,10 @@ module Vkit
 
           puts "✅ Logged in as #{res[:user]["email"]} (role: #{res[:user]["role"]})"
         rescue => e
-          @audit.log(
-            event_type: "auth.login.failure",
+          Vkit::Core::AuditLogger.log(
+            event: "auth.login.failure",
             actor: email,
-            metadata: { error: e.message }
+            details: { error: e.message }
           )
 
           puts "❌ Login failed: #{e.message}"
@@ -65,10 +64,10 @@ module Vkit
           payload = decode_jwt_payload(token)
           exp = payload["exp"] ? Time.at(payload["exp"]).utc : nil
 
-          @audit.log(
-            event_type: "auth.whoami",
+          Vkit::Core::AuditLogger.log(
+            event: "auth.whoami",
             actor: user["email"],
-            metadata: { token_exp: exp }
+            details: { token_exp: exp }
           )
 
           puts "👤 #{user["email"]} (role: #{user["role"]}, org: #{user["organization_id"]})"
@@ -79,10 +78,10 @@ module Vkit
           store = Vkit::Core::CredentialStore.new
           user  = store.load_user
 
-          @audit.log(
-            event_type: "auth.logout",
+          Vkit::Core::AuditLogger.log(
+            event: "auth.logout",
             actor: user ? user["email"] : nil,
-            metadata: {}
+            details: {}
           )
 
           store.clear!

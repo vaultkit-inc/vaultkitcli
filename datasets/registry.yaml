@@ -1,13 +1,77 @@
+---
 customers:
   datasource: cloud_pg
   fields:
-    email: pii
-    total_spend: financial
-    country: internal
-
+    id:
+      type: integer
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    email:
+      type: text
+      classification: :email
+      sensitivity: :medium
+      category: :pii
+    address:
+      type: text
+      classification: :address
+      sensitivity: :medium
+      category: :pii
+    total_spend:
+      type: numeric
+      classification: :amount
+      sensitivity: :medium
+      category: :financial
 orders:
-  datasource: primary_pg
+  datasource: cloud_pg
   fields:
-    order_id: internal
-    customer_id: internal
-    amount: financial
+    id:
+      type: integer
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    order_number:
+      type: character varying
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    customer_id:
+      type: integer
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    amount:
+      type: numeric
+      classification: :amount
+      sensitivity: :medium
+      category: :financial
+    currency:
+      type: character varying
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    shipping_address:
+      type: text
+      classification: :address
+      sensitivity: :medium
+      category: :pii
+    billing_address:
+      type: text
+      classification: :address
+      sensitivity: :medium
+      category: :pii
+    status:
+      type: character varying
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    created_at:
+      type: timestamp with time zone
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    updated_at:
+      type: timestamp with time zone
+      classification: :generic
+      sensitivity: :low
+      category: :internal

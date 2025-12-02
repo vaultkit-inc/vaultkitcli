@@ -5,7 +5,6 @@ require_relative "ttl_parser"
 module Vkit
   module Core
     class PolicyEngine
-      # Priority of outcomes (higher wins)
       PRIORITY = {
         "deny" => 3,
         "require_approval" => 2,
@@ -14,28 +13,13 @@ module Vkit
       }.freeze
 
       def initialize(policy_dir:, registry:)
-        @policies = load_policies(policy_dir)   # array of YAML hashes
-        @registry = registry                   # datasets registry from vkit dataset scan
+        @policies = load_policies(policy_dir)
+        @registry = registry
       end
 
-      # Evaluate a parsed AQL request → return a final decision hash
-      #
-      # Request shape (simplified, you will feed real Funl output):
-      # {
-      #   dataset: "customers",
-      #   fields: ["email", "total_spend"],
-      #   requester_role: "analyst",
-      #   requester_clearance: "low",
-      #   requester_region: "US",
-      #   dataset_region: "EU",
-      #   time: Time.now,
-      #   environment: "production"
-      # }
-      #
       def evaluate(request)
         decisions = @policies.map { |policy| evaluate_policy(policy, request) }
-        final = decisions.max_by { |d| PRIORITY[d[:action]] }
-        final || { action: "allow" }
+        decisions.max_by { |d| PRIORITY[d[:action]] } || allow_decision
       end
 
       private
@@ -44,12 +28,16 @@ module Vkit
         Dir.glob(File.join(dir, "*.yaml")).map { |f| YAML.load_file(f) }
       end
 
+      # ------------------------------------------------------------
+      # Evaluate a single policy
+      # ------------------------------------------------------------
       def evaluate_policy(policy, request)
-        return allow unless matches?(policy, request)
+        return allow_decision unless matches?(policy, request)
 
-        action = policy.fetch("action", {})
-        ttl = Vkit::Core::TTLParser.parse(action["ttl"]) rescue nil
+        action = policy["action"] || {}
+        ttl = parse_ttl(action)
 
+        # ---------------- DENY ---------------- #
         if action["deny"]
           return {
             action: "deny",
@@ -59,6 +47,7 @@ module Vkit
           }
         end
 
+        # ---------------- REQUIRE APPROVAL ---------------- #
         if action["require_approval"]
           return {
             action: "require_approval",
@@ -69,27 +58,34 @@ module Vkit
           }
         end
 
+        # ---------------- MASK ---------------- #
         if action["mask"]
           return {
             action: "mask",
             policy_id: policy["id"],
             reason: action["reason"],
-            ttl: ttl || 3600
+            ttl: ttl,
+            mask_fields:   action["mask_fields"],
+            mask_category: action["mask_category"],
+            mask_except:   action["mask_except"]
           }
         end
 
-        allow
+        # ---------------- ALLOW ---------------- #
+        if action["allow"] || action.empty?
+          return allow_decision(ttl: ttl)
+        end
+
+        allow_decision(ttl: ttl)
       end
 
-      def allow
-        {
-          action: "allow",
-          ttl: 3600
-        }
+      def allow_decision(ttl: 3600)
+        { action: "allow", ttl: ttl }
       end
 
-      # ---------------- MATCHING LOGIC ---------------- #
-
+      # ------------------------------------------------------------
+      # Matching functions
+      # ------------------------------------------------------------
       def matches?(policy, request)
         match_dataset(policy, request) &&
           match_fields(policy, request) &&
@@ -102,32 +98,33 @@ module Vkit
       end
 
       def match_fields(policy, request)
-        match = policy.dig("match", "fields")
-        return true unless match
+        rule = policy.dig("match", "fields")
+        return true unless rule
 
         requested_fields = request[:fields]
-        dataset_meta = @registry[request[:dataset]] || {}
-        field_tags = dataset_meta["fields"] || {}
+        field_meta = @registry.dig(request[:dataset], "fields") || {}
 
-        sensitivities = requested_fields.map { |f| field_tags[f] }.compact
+        # extract categories from registry (ex: "pii", "financial")
+        requested_categories =
+          requested_fields.map { |f| field_meta[f] }.compact
 
-        # match.fields.sensitivity: "pii"
-        if match["sensitivity"] && !sensitivities.include?(match["sensitivity"])
+        # sensitivity: pii
+        if rule["sensitivity"] && !requested_categories.include?(rule["sensitivity"])
           return false
         end
 
-        # match.fields.contains: [pii, financial]
-        if match["contains"] && !(match["contains"] - sensitivities).empty?
+        # contains: ["pii", "financial"]
+        if rule["contains"] && (rule["contains"] & requested_categories).empty?
           return false
         end
 
-        # match.fields.any: ["email", "name"]
-        if match["any"] && (requested_fields & match["any"]).empty?
+        # any: ["email", "name"]
+        if rule["any"] && (requested_fields & rule["any"]).empty?
           return false
         end
 
-        # match.fields.all: ["email", "name"]
-        if match["all"] && !(match["all"] - requested_fields).empty?
+        # all: ["email", "name"]
+        if rule["all"] && !(rule["all"] - requested_fields).empty?
           return false
         end
 
@@ -135,20 +132,25 @@ module Vkit
       end
 
       def match_context(policy, request)
-        ctx = policy["context"] || {}
+        ctx = policy.dig("match", "context") || {}
         return true if ctx.empty?
 
-        return false if ctx["requester_role"] && ctx["requester_role"] != request[:requester_role]
+        return false if ctx["requester_role"]      && ctx["requester_role"]      != request[:requester_role]
         return false if ctx["requester_clearance"] && ctx["requester_clearance"] != request[:requester_clearance]
-        return false if ctx["requester_region"] && ctx["requester_region"] != request[:requester_region]
-        return false if ctx["dataset_region"] && ctx["dataset_region"] != request[:dataset_region]
-        return false if ctx["environment"] && ctx["environment"] != request[:environment]
+        return false if ctx["requester_region"]    && ctx["requester_region"]    != request[:requester_region]
+        return false if ctx["dataset_region"]      && ctx["dataset_region"]      != request[:dataset_region]
+        return false if ctx["environment"]         && ctx["environment"]         != request[:environment]
 
         if time_rule = ctx["time"]
-          return false unless Matchers::TimeWindow.matches?(time_rule, request[:time] || Time.now)
+          return false unless Matchers::TimeWindow.matches?(time_rule, request[:time])
         end
 
         true
+      end
+
+      def parse_ttl(action)
+        return Vkit::Core::TTLParser.parse(action["ttl"]) if action["ttl"]
+        nil
       end
     end
   end

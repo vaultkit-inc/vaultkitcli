@@ -1,0 +1,15 @@
+id: mask_pii_for_analysts
+description: "Mask PII fields unless the requester is admin."
+
+match:
+  dataset: customers
+  context:
+    requester_role: analyst
+  fields:
+    sensitivity: pii
+
+action:
+  mask: true
+  mask_category: ["pii"]
+  reason: "Analysts must not see raw personally identifiable information."
+  ttl: "1h"

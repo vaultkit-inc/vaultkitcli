@@ -1,0 +1,11 @@
+id: admin_full_access
+description: "Administrators have unrestricted access including raw PII."
+
+match:
+  context:
+    requester_role: admin
+
+action:
+  allow: true
+  reason: "Admin exemption from masking rules."
+  ttl: "4h"
