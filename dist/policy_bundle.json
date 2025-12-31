@@ -1,0 +1,290 @@
+{
+  "bundle": {
+    "format_version": "v1",
+    "org_slug": "acme",
+    "bundle_version": "eefc2e079eb65209ff51978e620c0185cab6c490",
+    "created_at": "2025-12-29T22:33:24Z",
+    "source": {
+      "type": "git",
+      "repo": "git@github.com:ndbaba1/vaultkitcli.git",
+      "ref": "main",
+      "commit_sha": "eefc2e079eb65209ff51978e620c0185cab6c490"
+    },
+    "checksum": "be79119d64550ab2c167aeb29c49a5043ed4b7c8d65f77a183c87c14166cf2bb"
+  },
+  "registry": {
+    "datasets": [
+      {
+        "name": "customers",
+        "datasource": "cloud_pg",
+        "fields": [
+          {
+            "name": "id",
+            "type": "integer",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "sensitivity": "medium",
+            "tags": [
+              "pii"
+            ]
+          },
+          {
+            "name": "address",
+            "type": "text",
+            "sensitivity": "medium",
+            "tags": [
+              "pii"
+            ]
+          },
+          {
+            "name": "total_spend",
+            "type": "numeric",
+            "sensitivity": "medium",
+            "tags": [
+              "financial"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "orders",
+        "datasource": "cloud_pg",
+        "fields": [
+          {
+            "name": "id",
+            "type": "integer",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "order_number",
+            "type": "character varying",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "customer_id",
+            "type": "integer",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "amount",
+            "type": "numeric",
+            "sensitivity": "medium",
+            "tags": [
+              "financial"
+            ]
+          },
+          {
+            "name": "currency",
+            "type": "character varying",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "shipping_address",
+            "type": "text",
+            "sensitivity": "medium",
+            "tags": [
+              "pii"
+            ]
+          },
+          {
+            "name": "billing_address",
+            "type": "text",
+            "sensitivity": "medium",
+            "tags": [
+              "pii"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "character varying",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamp with time zone",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "products",
+        "datasource": "cloud_pg",
+        "fields": [
+          {
+            "name": "id",
+            "type": "integer",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "name",
+            "type": "text",
+            "sensitivity": "medium",
+            "tags": [
+              "pii"
+            ]
+          },
+          {
+            "name": "price_cents",
+            "type": "integer",
+            "sensitivity": "medium",
+            "tags": [
+              "financial"
+            ]
+          },
+          {
+            "name": "stock",
+            "type": "integer",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          }
+        ]
+      }
+    ],
+    "datasources": [
+      {
+        "name": "cloud_pg",
+        "type": "postgres",
+        "config": {
+        }
+      }
+    ]
+  },
+  "policies": [
+    {
+      "id": "admin_full_access",
+      "description": "Administrators have unrestricted access including raw PII.",
+      "match": {
+        "context": {
+          "requester_role": "admin"
+        }
+      },
+      "action": "allow",
+      "reason": "Admin exemption from masking rules.",
+      "ttl_seconds": "4h"
+    },
+    {
+      "id": "deny_cross_region_access",
+      "description": "Block access when requester and dataset are in different regions.",
+      "match": {
+        "dataset": "customers",
+        "context": {
+          "dataset_region": "EU",
+          "requester_region": "US"
+        }
+      },
+      "action": "deny",
+      "reason": "Cross-region access is not allowed."
+    },
+    {
+      "id": "financial_requires_approval",
+      "description": "Access to financial data requires manual approval.",
+      "match": {
+        "dataset": "customers",
+        "fields": {
+          "category": "financial"
+        }
+      },
+      "when": {
+        "requester_role": "analyst",
+        "environment": "production"
+      },
+      "action": "require_approval",
+      "reason": "Financial data requires review before release.",
+      "approval": {
+        "approver_role": "finance_manager"
+      },
+      "ttl_seconds": "1h"
+    },
+    {
+      "id": "mask_non_id_fields_for_support",
+      "description": "Support agents can view only IDs; all other fields must be masked.",
+      "match": {
+        "dataset": "customers",
+        "context": {
+          "requester_role": "support"
+        }
+      },
+      "action": "mask",
+      "reason": "Support role can only see customer identifiers.",
+      "ttl_seconds": "1h"
+    },
+    {
+      "id": "mask_pii_for_analysts",
+      "description": "Mask PII fields unless the requester is admin.",
+      "match": {
+        "dataset": "customers",
+        "context": {
+          "requester_role": "analyst"
+        },
+        "fields": {
+          "sensitivity": "pii"
+        }
+      },
+      "action": "mask",
+      "reason": "Analysts must not see raw personally identifiable information.",
+      "ttl_seconds": "1h"
+    },
+    {
+      "id": "require_approval_for_financial",
+      "description": "Financial fields require approval before access.",
+      "match": {
+        "dataset": "orders",
+        "fields": {
+          "sensitivity": "financial"
+        }
+      },
+      "action": "require_approval",
+      "reason": "Access to financial data requires explicit approval.",
+      "approval": {
+        "approver_role": "analyst"
+      },
+      "ttl_seconds": "2h"
+    }
+  ],
+  "signing": null
+}

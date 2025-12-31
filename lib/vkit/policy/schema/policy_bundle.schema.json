@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vaultkit.io/schemas/policy-bundle.schema.json",
+  "title": "VaultKit Policy Bundle",
+  "description": "Canonical, versioned bundle of datasets, datasources, and policies compiled from human-authored VaultKit policy templates.",
+  "type": "object",
+  "required": ["bundle", "registry", "policies"],
+  "additionalProperties": false,
+
+  "properties": {
+    "bundle": {
+      "type": "object",
+      "description": "Bundle metadata and provenance information.",
+      "required": [
+        "format_version",
+        "org_slug",
+        "bundle_version",
+        "created_at",
+        "source",
+        "checksum"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format_version": {
+          "type": "string",
+          "pattern": "^v\\d+$",
+          "description": "Policy bundle format version."
+        },
+        "org_slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bundle_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checksum": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 checksum of the canonicalized bundle."
+        },
+        "source": {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["git"]
+            },
+            "repo": { "type": "string" },
+            "ref": { "type": "string" },
+            "commit_sha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{7,40}$"
+            }
+          }
+        },
+        "compat": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min_control_plane": { "type": "string" },
+            "max_control_plane": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "registry": {
+      "type": "object",
+      "description": "Dataset and datasource registry used during policy evaluation.",
+      "required": ["datasets"],
+      "additionalProperties": false,
+      "properties": {
+        "datasets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "datasource", "fields"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "datasource": { "type": "string", "minLength": 1 },
+              "fields": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["name"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "type": { "type": ["string", "null"] },
+                    "sensitivity": { "type": ["string", "null"] },
+                    "tags": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+    
+        "datasources": {
+          "type": "array",
+          "description": "Logical datasource definitions referenced by datasets.",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "postgres",
+                  "snowflake",
+                  "bigquery",
+                  "mysql",
+                  "mongo",
+                  "elasticsearch",
+                  "http_api"
+                ]
+              },
+              "config": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },    
+
+    "policies": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of compiled policy rules.",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "match", "action"],
+        "additionalProperties": false,
+
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+
+          "match": {
+            "type": "object",
+            "description": "Data matching conditions. If dataset is omitted, policy applies globally.",
+            "additionalProperties": false,
+            "properties": {
+              "dataset": {
+                "type": "string",
+                "description": "Optional. If omitted, policy applies to all datasets."
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "any": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "all": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "sensitivity": {
+                    "type": ["string", "null"]
+                  },
+                  "category": {
+                    "type": ["string", "null"]
+                  },
+                  "contains": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              },
+              "context": {
+                "type": "object",
+                "description": "Static context constraints evaluated as part of matching.",
+                "additionalProperties": false,
+                "properties": {
+                  "requester_role": { "type": ["string", "null"] },
+                  "requester_region": { "type": ["string", "null"] },
+                  "dataset_region": { "type": ["string", "null"] }
+                }
+              }
+            }
+          },
+
+          "when": {
+            "type": "object",
+            "description": "Runtime context constraints evaluated at request time.",
+            "additionalProperties": false,
+            "properties": {
+              "requester_role": { "type": ["string", "null"] },
+              "requester_clearance": { "type": ["string", "integer", "null"] },
+              "requester_region": { "type": ["string", "null"] },
+              "dataset_region": { "type": ["string", "null"] },
+              "environment": { "type": ["string", "null"] },
+              "time": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  },
+                  "before": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  }
+                }
+              }
+            }
+          },
+
+          "action": {
+            "type": "string",
+            "enum": ["deny", "allow", "mask", "require_approval"]
+          },
+
+          "ttl_seconds": {
+            "type": ["string", "integer", "null"],
+            "description": "TTL for grants (e.g. 1h, 30m, or seconds)."
+          },
+
+          "reason": {
+            "type": ["string", "null"]
+          },
+
+          "masking": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "method"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string" },
+                    "method": {
+                      "type": "string",
+                      "enum": ["redact", "hash", "truncate", "nullify"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+
+          "approval": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "approver_role": { "type": "string" }
+            }
+          },
+
+          "priority": {
+            "type": ["integer", "null"]
+          }
+        }
+      }
+    },
+
+    "signing": {
+      "type": ["object", "null"],
+      "description": "Optional cryptographic signature over the bundle.",
+      "additionalProperties": false,
+      "properties": {
+        "alg": { "type": "string" },
+        "key_id": { "type": "string" },
+        "signature": { "type": "string" }
+      }
+    }
+  }
+}
