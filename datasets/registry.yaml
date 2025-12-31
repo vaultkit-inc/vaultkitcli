@@ -75,3 +75,31 @@ orders:
       classification: :generic
       sensitivity: :low
       category: :internal
+products:
+  datasource: cloud_pg
+  fields:
+    id:
+      type: integer
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    name:
+      type: text
+      classification: :name
+      sensitivity: :medium
+      category: :pii
+    price_cents:
+      type: integer
+      classification: :amount
+      sensitivity: :medium
+      category: :financial
+    stock:
+      type: integer
+      classification: :generic
+      sensitivity: :low
+      category: :internal
+    created_at:
+      type: timestamp with time zone
+      classification: :generic
+      sensitivity: :low
+      category: :internal
