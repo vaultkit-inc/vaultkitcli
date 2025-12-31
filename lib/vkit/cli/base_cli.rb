@@ -5,6 +5,9 @@ require_relative "commands/approval_command"
 require_relative "commands/fetch_command"
 require_relative "commands/datasource_command"
 require_relative "commands/scan_command"
+require_relative "commands/policy_bundle_command"
+require_relative "commands/policy_validate_command"
+require_relative "commands/policy_deploy_command"
 
 module Vkit
   module CLI
@@ -135,6 +138,52 @@ module Vkit
       def scan(ds_id)
        Commands::ScanCommand.new.call(ds_id)
       end
+
+      desc "policy SUBCOMMAND ...ARGS", "Manage policy bundles"
+      subcommand "policy", Class.new(Thor) {
+        desc "bundle", "Compile YAML policies into a JSON policy bundle"
+        option :policies_dir, type: :string, default: "config/policies"
+        option :registry_dir, type: :string, default: "config"
+        option :out, type: :string, default: "dist/policy_bundle.json"
+        option :org, type: :string, desc: "Organization slug"
+        option :version, type: :string, desc: "Bundle version (default: git SHA)"
+
+        def bundle
+          Commands::PolicyBundleCommand.new.call(
+            policies_dir: options[:policies_dir],
+            registry_dir: options[:registry_dir],
+            out: options[:out],
+            org: options[:org],
+            version: options[:version]
+          )
+        end
+
+        desc "validate", "Validate a compiled policy bundle"
+        option :bundle, type: :string, default: "dist/policy_bundle.json"
+        option :schema, type: :string, desc: "Path to schema (optional)"
+
+        def validate
+          Commands::PolicyValidateCommand.new.call(
+            bundle_path: options[:bundle],
+            schema_path: options[:schema]
+          )
+        end
+
+        desc "deploy", "Deploy a policy bundle to VaultKit"
+        option :bundle, type: :string, default: "dist/policy_bundle.json"
+        option :org, type: :string, required: true
+        option :server, type: :string, default: ENV["VKIT_API_URL"] || "http://localhost:3000"
+        option :activate, type: :boolean, default: true
+
+        def deploy
+          Commands::PolicyDeployCommand.new.call(
+            bundle_path: options[:bundle],
+            org: options[:org],
+            server: options[:server],
+            activate: options[:activate]
+          )
+        end
+      }
     end
   end
 end

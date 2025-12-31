@@ -28,16 +28,13 @@ module Vkit
         Dir.glob(File.join(dir, "*.yaml")).map { |f| YAML.load_file(f) }
       end
 
-      # ------------------------------------------------------------
       # Evaluate a single policy
-      # ------------------------------------------------------------
       def evaluate_policy(policy, request)
         return allow_decision unless matches?(policy, request)
 
         action = policy["action"] || {}
         ttl = parse_ttl(action)
 
-        # ---------------- DENY ---------------- #
         if action["deny"]
           return {
             action: "deny",
@@ -47,7 +44,6 @@ module Vkit
           }
         end
 
-        # ---------------- REQUIRE APPROVAL ---------------- #
         if action["require_approval"]
           return {
             action: "require_approval",
@@ -58,7 +54,6 @@ module Vkit
           }
         end
 
-        # ---------------- MASK ---------------- #
         if action["mask"]
           return {
             action: "mask",
@@ -71,7 +66,6 @@ module Vkit
           }
         end
 
-        # ---------------- ALLOW ---------------- #
         if action["allow"] || action.empty?
           return allow_decision(ttl: ttl)
         end
@@ -83,9 +77,7 @@ module Vkit
         { action: "allow", ttl: ttl }
       end
 
-      # ------------------------------------------------------------
       # Matching functions
-      # ------------------------------------------------------------
       def matches?(policy, request)
         match_dataset(policy, request) &&
           match_fields(policy, request) &&
@@ -100,36 +92,45 @@ module Vkit
       def match_fields(policy, request)
         rule = policy.dig("match", "fields")
         return true unless rule
-
+      
         requested_fields = request[:fields]
-        field_meta = @registry.dig(request[:dataset], "fields") || {}
-
-        # extract categories from registry (ex: "pii", "financial")
-        requested_categories =
-          requested_fields.map { |f| field_meta[f] }.compact
-
-        # sensitivity: pii
-        if rule["sensitivity"] && !requested_categories.include?(rule["sensitivity"])
+        field_meta       = @registry.dig(request[:dataset], "fields") || {}
+      
+        # Extracting per-field attributes
+        categories = requested_fields
+          .map { |f| field_meta[f]&.dig("category") }
+          .compact
+          .map(&:to_s)
+      
+        sensitivities = requested_fields
+          .map { |f| field_meta[f]&.dig("sensitivity") }
+          .compact
+          .map(&:to_s)
+      
+        if rule["category"] && !categories.include?(rule["category"].to_s)
           return false
         end
-
-        # contains: ["pii", "financial"]
-        if rule["contains"] && (rule["contains"] & requested_categories).empty?
+      
+        if rule["sensitivity"] && !sensitivities.include?(rule["sensitivity"].to_s)
           return false
         end
-
-        # any: ["email", "name"]
+      
+        if rule["contains"]
+          needed = Array(rule["contains"]).map(&:to_s)
+          return false if (needed - categories).any?
+        end
+      
         if rule["any"] && (requested_fields & rule["any"]).empty?
           return false
         end
-
-        # all: ["email", "name"]
+      
         if rule["all"] && !(rule["all"] - requested_fields).empty?
           return false
         end
-
+      
         true
       end
+      
 
       def match_context(policy, request)
         ctx = policy.dig("match", "context") || {}
