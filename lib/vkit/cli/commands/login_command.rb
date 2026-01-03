@@ -1,7 +1,6 @@
 require "io/console"
 require_relative "../../core/auth_client"
 require_relative "../../core/credential_store"
-require_relative "../../core/audit_logger"
 require "base64"
 require "json"
 
@@ -29,24 +28,8 @@ module Vkit
 
           save_credentials(res[:token], res[:user])
 
-          Vkit::Core::AuditLogger.log(
-            event: "auth.login.success",
-            actor: email,
-            details: {
-              server: @server,
-              role: res[:user]["role"],
-              org: res[:user]["organization_id"]
-            }
-          )
-
           puts "✅ Logged in as #{res[:user]["email"]} (role: #{res[:user]["role"]})"
         rescue => e
-          Vkit::Core::AuditLogger.log(
-            event: "auth.login.failure",
-            actor: email,
-            details: { error: e.message }
-          )
-
           puts "❌ Login failed: #{e.message}"
           exit 1
         end
@@ -64,12 +47,6 @@ module Vkit
           payload = decode_jwt_payload(token)
           exp = payload["exp"] ? Time.at(payload["exp"]).utc : nil
 
-          Vkit::Core::AuditLogger.log(
-            event: "auth.whoami",
-            actor: user["email"],
-            details: { token_exp: exp }
-          )
-
           puts "👤 #{user["email"]} (role: #{user["role"]}, org: #{user["organization_id"]})"
           puts "🔒 Token expires: #{exp} (#{time_left(exp)})" if exp
         end
@@ -77,12 +54,6 @@ module Vkit
         def call_logout
           store = Vkit::Core::CredentialStore.new
           user  = store.load_user
-
-          Vkit::Core::AuditLogger.log(
-            event: "auth.logout",
-            actor: user ? user["email"] : nil,
-            details: {}
-          )
 
           store.clear!
           puts "🧹 Logged out."

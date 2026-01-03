@@ -1,6 +1,7 @@
 require "thor"
 require_relative "commands/login_command"
 require_relative "commands/request_command"
+require_relative "commands/requests_list_command"
 require_relative "commands/approval_command"
 require_relative "commands/fetch_command"
 require_relative "commands/datasource_command"
@@ -8,10 +9,15 @@ require_relative "commands/scan_command"
 require_relative "commands/policy_bundle_command"
 require_relative "commands/policy_validate_command"
 require_relative "commands/policy_deploy_command"
+require_relative "requests_cli"
 
 module Vkit
   module CLI
     class BaseCLI < Thor
+      def self.exit_on_failure?
+        true
+      end
+
       # ------------ LOGIN -------------
       desc "login", "Authenticate with VaultKit auth server"
       option :server, type: :string, default: ENV["VKIT_AUTH_URL"] || "http://localhost:3000"
@@ -38,26 +44,17 @@ module Vkit
       option :env, type: :string, default: "production"
       option :requester_region, type: :string
       option :dataset_region, type: :string
-      option :policies_dir, type: :string, default: "config/policies"
-      option :registry, type: :string, default: "datasets/registry.yaml"
-      option :funl_url, type: :string, default: ENV["FUNL_URL"] || "http://localhost:8080"
       option :requester_clearance, type: :string, desc: "Clearance level (low/high/admin)"
-      option :format, type: :string, default: "json", enum: %w[json table], desc: "Output format"
+      option :format, type: :string, default: "table", enum: %w[json table], desc: "Output format"
       def request
         aql_str = options[:aql]
-        funl_url = options[:funl_url]
-        Commands::RequestCommand.new(funl_url: funl_url).call(aql_str, options)
+        Commands::RequestCommand
+          .new(api_url: ENV["VKIT_API_URL"])
+          .call(aql_str, options)
       end
 
-      desc "request:list", "List your past data access requests"
-      define_method("request:list") do
-        Commands::RequestCommand.new(funl_url: nil).call_list
-      end
-
-      desc "request:show ID", "Show details of a specific request you created"
-      define_method("request:show") do |id|
-        Commands::RequestCommand.new(funl_url: nil).call_show(id)
-      end
+      desc "requests SUBCOMMAND ...ARGS", "Manage request history"
+      subcommand "requests", Vkit::CLI::RequestsCLI    
 
       # ------------ APPROVALS -------------
       desc "approval:list", "List all pending approval requests"
@@ -67,23 +64,19 @@ module Vkit
       end
 
       desc "approval:approve ID", "Approve a pending request"
-      option :approver, type: :string, desc: "Override approver email (optional)"
       option :ttl, type: :numeric, default: 3600, desc: "Grant TTL in seconds (default: 3600)"
       define_method("approval:approve") do |id|
         Commands::ApprovalCommand.new.call_approve(
           id: id,
-          approver: options[:approver],
           ttl_seconds: options[:ttl]
         )
       end
 
       desc "approval:deny ID", "Deny a pending request"
-      option :approver, type: :string, desc: "Override approver email (optional)"
       option :reason,   type: :string, desc: "Reason for denial (if omitted, will prompt)"
       define_method("approval:deny") do |id|
         Commands::ApprovalCommand.new.call_deny(
           id: id,
-          approver: options[:approver],
           reason: options[:reason]
         )
       end
@@ -91,13 +84,11 @@ module Vkit
       desc "fetch --grant ID", "Fetch data from Funl using a valid grant"
       option :grant, type: :string, required: true
       option :format, type: :string, default: "json", enum: %w[json table]
-      option :funl_url, type: :string, default: ENV["FUNL_URL"] || "https://kizzie-unfretting-lastly.ngrok-free.dev"
       def fetch
         grant_id = options[:grant]
         format   = options[:format]
-        funl_url = options[:funl_url]
 
-        Commands::FetchCommand.new(funl_url: funl_url).call(grant_id: grant_id, format: format)
+        Commands::FetchCommand.new(api_url: ENV["VKIT_API_URL"]).call(grant_ref: grant_id, format: format)
       end
 
       desc "datasource SUBCOMMAND ...ARGS", "Manage datasources (admin only)"
@@ -134,9 +125,12 @@ module Vkit
         end
       }
 
-      desc "scan DATASOURCE_ID", "Scan datasource and auto-classify fields"
-      def scan(ds_id)
-       Commands::ScanCommand.new.call(ds_id)
+      desc "scan DATASOURCE", "Scan datasource and diff against registry"
+      option :mode, type: :string, default: "diff_only", enum: %w[diff_only apply]
+      def scan(datasource)
+        Commands::ScanCommand
+          .new(api_url: ENV["VKIT_API_URL"])
+          .call(datasource, mode: options[:mode])
       end
 
       desc "policy SUBCOMMAND ...ARGS", "Manage policy bundles"
