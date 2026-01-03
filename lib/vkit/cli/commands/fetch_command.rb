@@ -1,61 +1,29 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "../api/client"
-require_relative "../../core/credential_store"
-require_relative "../../core/table_formatter"
 
 module Vkit
   module CLI
     module Commands
-      class FetchCommand
-        def initialize(api_url: ENV["VKIT_API_URL"])
-          raise "VKIT_API_URL not set" unless api_url
-          @api_url = api_url.chomp("/")
-        end
-
+      class FetchCommand < BaseCommand
         def call(grant_ref:, format: "json")
-          user  = require_login!
-          org   = user["organization_slug"]
+          with_auth do
+            user = credential_store.user
+            org  = user["organization_slug"]
 
-          response =
-            client.post(
+            response = authenticated_client.post(
               "/api/v1/orgs/#{org}/grants/#{grant_ref}/fetch",
               body: {}
             )
 
             rows = response["rows"] || []
+            meta = response["meta"] || {}
 
-          print_result(rows["rows"], rows["meta"], format)
-
-        rescue Vkit::CLI::API::APIError => e
-          warn "❌ Fetch failed"
-          warn e.message
-          exit 1
+            print_result(rows, meta, format)
+          end
         end
 
         private
-
-        def client
-          @client ||= Vkit::CLI::API::Client.new(
-            base_url: @api_url,
-            token: require_token!
-          )
-        end
-
-        def require_login!
-          creds = Vkit::Core::CredentialStore.new
-          user  = creds.load_user
-          raise "Not logged in. Run: vkit login" unless user
-          user
-        end
-
-        def require_token!
-          creds = Vkit::Core::CredentialStore.new
-          token = creds.load_token
-          raise "Missing auth token. Run: vkit login" unless token
-          token
-        end
 
         def print_result(rows, meta, format)
           puts "✅ OK — #{rows.size} rows"
