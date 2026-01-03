@@ -13,9 +13,7 @@ module Vkit
              enum: %w[json table]
 
       def list
-        Commands::RequestsListCommand.new(
-          api_url: ENV["VKIT_API_URL"]
-        ).call(
+        Commands::RequestsListCommand.new.call(
           state: options[:state],
           format: options[:format]
         )
