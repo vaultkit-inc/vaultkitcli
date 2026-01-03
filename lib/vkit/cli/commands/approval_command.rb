@@ -1,228 +1,117 @@
-require_relative "../../core/approval_store"
-require_relative "../../core/grant_store"
+# frozen_string_literal: true
+
+require "json"
+require_relative "../api/client"
 require_relative "../../core/credential_store"
-require_relative "../../core/audit_logger"
-require "yaml"
 
 module Vkit
   module CLI
     module Commands
       class ApprovalCommand
-        DEFAULT_TTL   = 3600
-        REGISTRY_PATH = "datasets/registry.yaml"
+        DEFAULT_TTL = 3600
 
-        def initialize
-          @approval_store = Vkit::Core::ApprovalStore.new
-          @grant_store    = Vkit::Core::GrantStore.new
-          @registry_cache = nil
+        def initialize(api_url: ENV["VKIT_API_URL"])
+          raise "VKIT_API_URL not set" unless api_url
+          @api_url = api_url.chomp("/")
         end
 
-        # --------------------------------------------------
-        # LIST — Scoped by user ability
-        # --------------------------------------------------
+        # LIST
         def call_list(state: "pending")
           user = current_user
-          user_email = user["email"]
-          user_role  = user["role"]
+          org  = user["organization_slug"]
 
-          Vkit::Core::AuditLogger.log(
-            event: "approval.list.requested",
-            actor: user_email,
-            details: { state: state, role: user_role }
+          rows = client.get(
+            "/api/v1/orgs/#{org}/approvals?state=#{state}"
           )
 
-          all = @approval_store.list(state: state)
-
-          if all.empty?
-            Vkit::Core::AuditLogger.log(
-              event: "approval.list.empty",
-              actor: user_email,
-              details: { state: state }
-            )
-            puts empty_message_for(state, user_role)
+          if rows.empty?
+            puts empty_message_for(state)
             return
           end
 
-          # Filter results based on role
-          filtered =
-            if ["admin", "approver"].include?(user_role)
-              all
-            else
-              all.select do |req|
-                can_user_approve?(user_role, req[:dataset], req[:approver_role]) &&
-                  req[:requester] != user_email
-              end
-            end
-
-          if filtered.empty?
-            Vkit::Core::AuditLogger.log(
-              event: "approval.list.no_scope",
-              actor: user_email,
-              details: { state: state, role: user_role }
-            )
-            puts no_scope_message(state, user_role)
-            return
-          end
-
-          Vkit::Core::AuditLogger.log(
-            event: "approval.list.returned",
-            actor: user_email,
-            details: { count: filtered.size, state: state }
-          )
-
-          puts "📋 Requests You Can Act On (#{filtered.size}, state=#{state}):"
-          filtered.each do |r|
+          puts "📋 Approvals (#{rows.size}, state=#{state})"
+          rows.each do |r|
             puts "─" * 60
-            puts "🆔  #{r[:id]}"
-            puts "📂  Dataset:    #{r[:dataset]}"
-            puts "📄  Fields:     #{r[:fields].join(', ')}"
-            puts "👤  Requester:  #{r[:requester]}"
-            puts "🔐  Required:   #{r[:approver_role] || 'n/a'}"
-            puts "💬  Reason:     #{r[:reason]}"
+            puts "🆔  #{r["id"]}"
+            puts "📂  Dataset:    #{r["dataset"]}"
+            puts "📄  Fields:     #{Array(r["fields"]).join(', ')}"
+            puts "👤  Requester:  #{r["requester_email"]}"
+            puts "🔐  Required:   #{r["approver_role"] || 'n/a'}"
+            puts "⚙️   Status:     #{r["state"].capitalize}"
+            puts "🔑  Grant Ref:  #{r["grant_ref"] || 'n/a'}" if r["state"] == "approved"
+            puts "💬  Reason:     #{r["reason"]}"
+            puts "📅  Created:    #{r["created_at"]}"
           end
           puts "─" * 60
-        end
-
-        # --------------------------------------------------
-        # APPROVE
-        # --------------------------------------------------
-        def call_approve(id:, approver:, ttl_seconds: DEFAULT_TTL)
-          user, approver_email, approver_role = resolve_user_context(approver)
-
-          Vkit::Core::AuditLogger.log(
-            event: "approval.approve.initiated",
-            actor: approver_email,
-            details: { id: id, ttl: ttl_seconds }
-          )
-
-          pending = fetch(id)
-
-          if pending[:requester] == user["email"]
-            raise "You cannot approve your own request (#{pending[:id]})."
-          end
-
-          ensure_authorized!(approver_role, pending[:dataset], pending[:approver_role])
-
-          grant = @approval_store.approve!(
-            id,
-            approver: approver_email,
-            ttl_seconds: ttl_seconds
-          )
-
-          Vkit::Core::AuditLogger.log(
-            event: "approval.approved",
-            actor: approver_email,
-            details: {
-              request_id: id,
-              dataset: pending[:dataset],
-              fields: pending[:fields],
-              grant_id: grant[:id],
-              expires_at: grant[:expires_at]
-            }
-          )
-
-          puts "✅ Approved request #{id}"
-          puts "   → Grant ID: #{grant[:id]}"
-          puts "   → Expires at: #{grant[:expires_at]}"
-          puts "   → Approved by: #{approver_email} (role: #{approver_role})"
-
-        rescue => e
-          Vkit::Core::AuditLogger.log(
-            event: "approval.approve.failed",
-            actor: approver_email,
-            details: { id: id, error: e.message }
-          )
-          puts "❌ Approval failed: #{e.message}"
+        rescue Vkit::CLI::API::APIError => e
+          puts "❌ Failed to list approvals"
+          puts e.message
           exit 1
         end
 
-        # --------------------------------------------------
-        # DENY
-        # --------------------------------------------------
-        def call_deny(id:, approver:, reason: nil)
-          user, approver_email, approver_role = resolve_user_context(approver)
+        # APPROVE
+        def call_approve(id:, ttl_seconds: DEFAULT_TTL)
+          user = current_user
+          org  = user["organization_slug"]
 
-          Vkit::Core::AuditLogger.log(
-            event: "approval.deny.initiated",
-            actor: approver_email,
-            details: { id: id }
+          res = client.post(
+            "/api/v1/orgs/#{org}/approvals/#{id}/approve",
+            body: { ttl_seconds: ttl_seconds }
           )
 
-          pending = fetch(id)
+          puts "✅ Approved request #{id}"
+          puts "   → Grant Ref: #{res["grant_ref"] || res["grant_id"]}"
+          puts "   → Expires:   #{res["expires_at"]}"
 
-          if pending[:requester] == user["email"]
-            raise "You cannot deny your own request (#{pending[:id]})."
-          end
+        rescue Vkit::CLI::API::APIError => e
+          puts "❌ Approval failed"
+          puts e.message
+          exit 1
+        end
 
-          ensure_authorized!(approver_role, pending[:dataset], pending[:approver_role])
+        # DENY
+        def call_deny(id:, reason: nil)
+          user = current_user
+          org  = user["organization_slug"]
 
           reason ||= prompt_reason
           raise "Denial reason cannot be empty" if reason.to_s.empty?
 
-          @approval_store.deny!(id, approver: approver_email, reason: reason)
-
-          Vkit::Core::AuditLogger.log(
-            event: "approval.denied",
-            actor: approver_email,
-            details: {
-              request_id: id,
-              dataset: pending[:dataset],
-              fields: pending[:fields],
-              reason: reason
-            }
+          client.post(
+            "/api/v1/orgs/#{org}/approvals/#{id}/deny",
+            body: { reason: reason }
           )
 
           puts "🚫 Denied request #{id}"
-          puts "   → Denied by: #{approver_email} (role: #{approver_role})"
           puts "   → Reason: #{reason}"
 
-        rescue => e
-          Vkit::Core::AuditLogger.log(
-            event: "approval.deny.failed",
-            actor: approver_email,
-            details: { id: id, error: e.message }
-          )
-          puts "❌ Deny failed: #{e.message}"
+        rescue Vkit::CLI::API::APIError => e
+          puts "❌ Deny failed"
+          puts e.message
           exit 1
         end
 
         private
-        # (helpers unchanged)
-        # --------------------------------------------------
+
+        def client
+          @client ||= Vkit::CLI::API::Client.new(
+            base_url: @api_url,
+            token: require_token!
+          )
+        end
+
         def current_user
           creds = Vkit::Core::CredentialStore.new
-          user = creds.load_user
-          raise "Not logged in. Run: vkit login" if user.nil?
+          user  = creds.load_user
+          raise "Not logged in. Run: vkit login" unless user
           user
         end
 
-        def fetch(id)
-          row = @approval_store.fetch(id)
-          raise "Request not found" if row.nil?
-          row
-        end
-
-        def resolve_user_context(override_email)
-          user = current_user
-          approver_email = override_email || user["email"]
-          approver_role  = user["role"]
-          [user, approver_email, approver_role]
-        end
-
-        def can_user_approve?(role, dataset, required_role)
-          registry       = load_registry
-          dataset_meta   = registry[dataset] || {}
-          dataset_roles  = Array(dataset_meta["approvers"]).compact
-          required_roles = Array(required_role).compact
-
-          allowed_roles = (required_roles + dataset_roles + ["admin", "approver"]).uniq
-          allowed_roles.include?(role)
-        end
-
-        def ensure_authorized!(role, dataset, required_role)
-          unless can_user_approve?(role, dataset, required_role)
-            raise "Not authorized: your role (#{role}) cannot act on dataset '#{dataset}'."
-          end
+        def require_token!
+          creds = Vkit::Core::CredentialStore.new
+          token = creds.load_token
+          raise "Missing auth token. Run: vkit login" unless token
+          token
         end
 
         def prompt_reason
@@ -230,21 +119,13 @@ module Vkit
           STDIN.gets&.strip
         end
 
-        def load_registry
-          @registry_cache ||= File.exist?(REGISTRY_PATH) ? YAML.load_file(REGISTRY_PATH) : {}
-        end
-
-        def empty_message_for(state, role)
+        def empty_message_for(state)
           case state
-          when "pending"  then "📭 No pending requests found."
-          when "approved" then "📭 No approved requests found."
-          when "denied"   then "📭 No denied requests found."
-          else                "📭 No requests found."
+          when "pending"  then "📭 No pending approvals."
+          when "approved" then "📭 No approved requests."
+          when "denied"   then "📭 No denied requests."
+          else                 "📭 No approvals found."
           end
-        end
-
-        def no_scope_message(state, role)
-          "🔒 You have no #{state} requests available for your role (#{role})."
         end
       end
     end

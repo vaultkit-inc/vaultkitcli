@@ -1,89 +1,79 @@
-# lib/vkit/cli/commands/scan_command.rb
-require "yaml"
-require_relative "../../core/dataset_scanner"
-require_relative "../../core/classifier"
-require_relative "../../core/registry_updater"
-require_relative "../../core/audit_logger"
+# frozen_string_literal: true
+
+require "json"
+require_relative "../api/client"
 require_relative "../../core/credential_store"
 
 module Vkit
   module CLI
     module Commands
       class ScanCommand
-        def initialize
-          @audit = Vkit::Core::AuditLogger
+        def initialize(api_url: ENV["VKIT_API_URL"])
+          raise "VKIT_API_URL not set" unless api_url
+          @api_url = api_url.chomp("/")
         end
 
-        def call(datasource_id)
-          user = require_login!
-          actor = user["email"]
+        # mode: "diff_only" (default) or "apply"
+        def call(datasource_name, mode: "diff_only")
+          user  = require_login!
+          org   = user["organization_slug"]
 
-          puts "🔍 Scanning datasource '#{datasource_id}'..."
+          puts "🔍 Running scan for datasource '#{datasource_name}' (mode=#{mode})..."
 
-          scanner     = Vkit::Core::DatasetScanner.new(datasource_id: datasource_id)
-          raw_schema  = scanner.scan
-
-          puts raw_schema
-
-          puts "🧠 Classifying fields..."
-          classifier  = Vkit::Core::Classifier.new
-          classified  = classifier.classify(raw_schema)
-
-          puts "📝 Updating registry..."
-          updater          = Vkit::Core::RegistryUpdater.new
-          updated_registry = updater.update(
-            classified,
-            datasource_id: datasource_id
-          )
-
-          # Convert classifier array → hash for audit logging
-          classified_hash = classified.each_with_object({}) do |entry, h|
-            table = entry[:table] || entry["table"]
-            cols  = entry[:columns] || entry["columns"]
-            h[table] = cols
-          end
-
-          @audit.log(
-            event:  "scan.completed",
-            actor:  actor,
-            details: {
-              datasource: datasource_id,
-              tables: raw_schema.keys,
-              classified_fields: classified_hash.transform_values { |cols| cols.map { |c| c[:name] } }
+          response = client.post(
+            "/api/v1/orgs/#{org}/datasources/#{datasource_name}/scan",
+            body: {
+              datasource: datasource_name,
+              mode: mode
             }
           )
 
+          puts "✅ Scan completed"
+          puts "🆔 Scan ID: #{response["scan_id"]}"
+          puts "📌 Mode: #{response["mode"]}"
 
-          puts "✅ Scan complete!"
-          puts "📘 Updated registry.yaml"
-          puts "─" * 50
-          puts YAML.dump(updated_registry)
-          puts "─" * 50
+          diff = response["diff"] || {}
 
-        rescue => e
-          @audit.log(
-            event:  "scan.failed",
-            actor:  require_login_safe,
-            details: { datasource: datasource_id, error: e.message }
-          )
-          warn "❌ Scan failed: #{e.message}"
+          if diff.empty?
+            puts "✨ No changes detected"
+          else
+            puts "📐 Registry diff:"
+            puts "─" * 50
+            puts JSON.pretty_generate(diff)
+            puts "─" * 50
+          end
+
+          if response.key?("applied")
+            puts response["applied"] ? "✅ Changes applied" : "ℹ️ Changes not applied"
+          end
+
+        rescue Vkit::CLI::API::APIError => e
+          warn "❌ Scan failed"
+          warn e.message
           exit 1
         end
 
         private
 
+        def client
+          @client ||= Vkit::CLI::API::Client.new(
+            base_url: @api_url,
+            token: require_token!
+          )
+        end
+
         def require_login!
           creds = Vkit::Core::CredentialStore.new
           user  = creds.load_user
-          raise "Not logged in. Run: vkit login" if user.nil?
+          raise "Not logged in. Run: vkit login" unless user
           user
         end
 
-        # fallback when logging failure events and login failed
-        def require_login_safe
+        def require_token!
           creds = Vkit::Core::CredentialStore.new
-          user  = creds.load_user
-          user ? user["email"] : "unknown"
+          token = creds.load_token
+          raise "Missing auth token. Run: vkit login" unless token
+          token
         end
       end
     end

@@ -1,4 +1,30 @@
 #!/usr/bin/env ruby
-# require "vkit"
+
 require_relative "../lib/vkit"
-Vkit::CLI::BaseCLI.start(ARGV)
+require_relative "../lib/vkit/cli/errors"
+
+begin
+  Vkit::CLI::BaseCLI.start(ARGV)
+
+rescue Vkit::CLI::Error => e
+  warn "❌ #{e.message}"
+  exit 1
+
+rescue Thor::Error => e
+  warn "❌ #{e.message}"
+  exit 1
+
+rescue Interrupt
+  warn "\n⏹️  Interrupted"
+  exit 130
+
+rescue => e
+  warn e.message
+
+  # Only show stack trace when debugging
+  if ENV["VKIT_DEBUG"] == "true"
+    warn e.backtrace.join("\n")
+  end
+
+  exit 1
+end
