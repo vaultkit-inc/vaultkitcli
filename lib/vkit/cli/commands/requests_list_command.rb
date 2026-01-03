@@ -8,28 +8,28 @@ require_relative "../../core/table_formatter"
 module Vkit
   module CLI
     module Commands
-      class FetchCommand
+      class RequestsListCommand
         def initialize(api_url: ENV["VKIT_API_URL"])
           raise "VKIT_API_URL not set" unless api_url
           @api_url = api_url.chomp("/")
         end
 
-        def call(grant_ref:, format: "json")
-          user  = require_login!
-          org   = user["organization_slug"]
+        def call(state:, format:)
+          user = require_login!
+          org  = user["organization_slug"]
+
+          params = {}
+          params[:state] = state unless state == "all"
 
           response =
-            client.post(
-              "/api/v1/orgs/#{org}/grants/#{grant_ref}/fetch",
-              body: {}
+            client.get(
+              "/api/v1/orgs/#{org}/requests",
+              params: params
             )
 
-            rows = response["rows"] || []
-
-          print_result(rows["rows"], rows["meta"], format)
-
+          render(response, format)
         rescue Vkit::CLI::API::APIError => e
-          warn "❌ Fetch failed"
+          warn "❌ Failed to list requests"
           warn e.message
           exit 1
         end
@@ -57,12 +57,10 @@ module Vkit
           token
         end
 
-        def print_result(rows, meta, format)
-          puts "✅ OK — #{rows.size} rows"
-
-          if meta.any?
-            puts "ℹ️  Query Metadata:"
-            puts JSON.pretty_generate(meta)
+        def render(rows, format)
+          if rows.empty?
+            puts "📭 No requests found"
+            return
           end
 
           case format
