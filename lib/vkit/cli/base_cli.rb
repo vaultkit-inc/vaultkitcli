@@ -157,7 +157,7 @@ module Vkit
 
         desc "deploy", "Deploy a policy bundle to VaultKit"
         option :bundle, type: :string, default: "dist/policy_bundle.json"
-        option :org, type: :string, required: true
+        option :org, type: :string
         option :activate, type: :boolean, default: true
 
         def deploy
