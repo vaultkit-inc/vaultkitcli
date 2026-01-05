@@ -1,3 +1,5 @@
+require_relative "../api/client"
+
 module Vkit
   module CLI
     module Commands
