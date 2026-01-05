@@ -2,14 +2,14 @@
 
 Gem::Specification.new do |spec|
   spec.name          = "vaultkit"
-  spec.version       = "0.1.0"
+  spec.version       = "0.1.1"
   spec.authors       = ["Nnamdi Ogundu"]
   spec.email         = ["founders@vaultkit.io"]
 
   spec.summary       = "VaultKit CLI"
   spec.description   = "Command-line interface for interacting with the VaultKit control plane"
   spec.homepage      = "https://vaultkit.io"
-  spec.license       = "Proprietary"
+  spec.license       = "Nonstandard"
 
   spec.required_ruby_version = ">= 3.0"
   spec.require_paths = ["lib"]
