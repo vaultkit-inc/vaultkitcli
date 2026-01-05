@@ -27,7 +27,12 @@ The VaultKit CLI (`vkit`) is the primary interface for interacting with the Vaul
 
 ## 🎯 What is VaultKit CLI?
 
-The VaultKit CLI provides command-line access to:
+The VaultKit CLI provides command-line access to VaultKit for:
+
+- **Users** - Data analysts, engineers, and administrators
+- **AI Agents** - LLMs and autonomous systems requiring governed data access
+- **Tools & Services** - CI/CD pipelines, data pipelines, and automated workflows
+- **Applications** - Programmatic integration via scripting
 
 | Capability | Description |
 |------------|-------------|
@@ -71,16 +76,6 @@ VaultKit uses a **request → policy → grant → fetch** workflow:
 
 ```bash
 gem install vaultkitcli
-```
-
-### Option 2: Install from Source
-
-```bash
-git clone https://github.com/yourorg/vaultkit-cli.git
-cd vaultkit-cli
-bundle install
-gem build vaultkitcli.gemspec
-gem install ./vaultkitcli-0.1.0.gem
 ```
 
 ### Verify Installation
@@ -129,7 +124,7 @@ vkit request --aql '{
 
 If granted immediately:
 ```bash
-vkit fetch --grant g_customers_abc123xyz
+vkit fetch --grant gr_abc123xyz
 ```
 
 If approval required:
@@ -138,7 +133,7 @@ If approval required:
 vkit requests list --state pending
 
 # After approval
-vkit fetch --grant g_customers_abc123xyz
+vkit fetch --grant gr_abc123xyz
 ```
 
 ---
@@ -180,12 +175,21 @@ vkit whoami
 
 **Output:**
 ```
-User ID:         user_12345
-Email:           analyst@company.com
-Role:            analyst
-Clearance Level: 2 (high)
-Region:          US
-Session Expires: 2024-01-15 18:00:00 UTC
+👤 analyst@acme.com (role: analyst, org: acme)
+```
+
+**JSON Format:**
+```bash
+vkit whoami --format json
+```
+
+**Output:**
+```json
+{
+  "email": "analyst@acme.com",
+  "role": "analyst",
+  "org": "acme"
+}
 ```
 
 ### `vkit logout`
@@ -212,12 +216,12 @@ vkit request --aql '{
 
 # Output:
 # ✓ Request granted immediately
-# Grant ID: g_customers_abc123xyz
+# Grant ID: gr_abc123xyz
 # TTL: 4 hours
-# Use: vkit fetch --grant g_customers_abc123xyz
+# Use: vkit fetch --grant gr_abc123xyz
 
 # 2. Fetch data
-vkit fetch --grant g_customers_abc123xyz --format table
+vkit fetch --grant gr_abc123xyz --format table
 ```
 
 ### Workflow 2: Approval Required
@@ -241,7 +245,7 @@ vkit request --aql '{
 vkit requests list --state pending
 
 # 3. After approval, fetch data
-vkit fetch --grant g_customers_approved_abc123
+vkit fetch --grant gr_approved_abc123
 ```
 
 ### Workflow 3: Denied Access
@@ -491,16 +495,16 @@ vkit fetch --grant <GRANT_REF> [--format FORMAT]
 **Examples:**
 ```bash
 # Fetch and display as table
-vkit fetch --grant g_customers_abc123xyz
+vkit fetch --grant gr_abc123xyz
 
 # Fetch as JSON
-vkit fetch --grant g_customers_abc123xyz --format json
+vkit fetch --grant gr_abc123xyz --format json
 
 # Fetch and save to CSV
-vkit fetch --grant g_customers_abc123xyz --format csv --output results.csv
+vkit fetch --grant gr_abc123xyz --format csv --output results.csv
 
 # Pipe to jq for processing
-vkit fetch --grant g_customers_abc123xyz --format json | jq '.data[] | select(.revenue > 1000)'
+vkit fetch --grant gr_abc123xyz --format json | jq '.data[] | select(.revenue > 1000)'
 ```
 
 ---
@@ -525,7 +529,7 @@ vkit datasource add --id <ID> --engine <ENGINE> [OPTIONS]
 
 **Examples:**
 
-**PostgreSQL:**
+**PostgreSQL (Built-in credential storage):**
 ```bash
 vkit datasource add \
   --id production_pg \
@@ -541,33 +545,18 @@ vkit datasource add \
   }'
 ```
 
-**With HashiCorp Vault:**
+**MySQL:**
 ```bash
 vkit datasource add \
-  --id production_pg \
-  --engine postgres \
-  --credential-backend vault \
-  --vault-path secret/data/databases/production \
+  --id production_mysql \
+  --engine mysql \
+  --username app_reader \
+  --password $MYSQL_PASSWORD \
   --config '{
-    "host": "db.production.internal",
-    "port": 5432,
-    "database": "analytics",
-    "ssl_mode": "verify-full"
-  }'
-```
-
-**Snowflake:**
-```bash
-vkit datasource add \
-  --id snowflake_prod \
-  --engine snowflake \
-  --username analytics_user \
-  --password $SNOWFLAKE_PASSWORD \
-  --config '{
-    "account": "xy12345.us-east-1",
-    "warehouse": "ANALYTICS_WH",
-    "database": "PRODUCTION",
-    "schema": "PUBLIC"
+    "host": "mysql.production.internal",
+    "port": 3306,
+    "database": "ecommerce",
+    "ssl_mode": "REQUIRED"
   }'
 ```
 
@@ -630,7 +619,7 @@ vkit datasource remove <DATASOURCE_ID> [--force]
 
 **Example:**
 ```bash
-vkit datasource remove old_staging_customers_db --force
+vkit datasource remove old_staging_db --force
 ```
 
 ---
@@ -716,10 +705,18 @@ vkit policy bundle [OPTIONS]
 - `--registry_dir` — Path to registry files (default: `config`)
 - `--datasources_dir` — Path to datasource configs (default: `config/datasources`)
 - `--out` — Output bundle file (default: `dist/policy_bundle.json`)
-- `--org` — Organization identifier
+- `--org` — Organization identifier (optional, defaults to logged-in user's org)
 
 **Example:**
 ```bash
+# Using logged-in user's org
+vkit policy bundle \
+  --policies_dir config/policies \
+  --registry_dir config \
+  --datasources_dir config/datasources \
+  --out dist/policy_bundle.json
+
+# Specifying org explicitly
 vkit policy bundle \
   --policies_dir config/policies \
   --registry_dir config \
@@ -759,13 +756,18 @@ vkit policy deploy --bundle <BUNDLE_FILE> [OPTIONS]
 
 **Options:**
 - `--bundle` — Path to bundle file (required)
-- `--org` — Organization identifier
+- `--org` — Organization identifier (optional, defaults to logged-in user's org)
 - `--activate` — Immediately activate bundle
 - `--dry-run` — Validate deployment without activating
 
 **Examples:**
 ```bash
-# Deploy and activate
+# Deploy and activate (using logged-in user's org)
+vkit policy deploy \
+  --bundle dist/policy_bundle.json \
+  --activate
+
+# Deploy with explicit org
 vkit policy deploy \
   --bundle dist/policy_bundle.json \
   --org acme \
@@ -774,7 +776,6 @@ vkit policy deploy \
 # Dry run (test deployment)
 vkit policy deploy \
   --bundle dist/policy_bundle.json \
-  --org acme \
   --dry-run
 ```
 
@@ -854,69 +855,6 @@ vkit audit export \
 
 ---
 
-## ⚙️ Configuration
-
-### Configuration File
-
-Create `~/.vkit/config.yaml` for persistent settings:
-
-```yaml
-# VaultKit Control Plane
-api_url: "https://vaultkit.company.com"
-
-# Authentication
-auth:
-  method: "sso"  # or "password"
-  sso_provider: "okta"
-
-# Default Settings
-defaults:
-  datasource: "production_pg"
-  environment: "production"
-  requester_region: "US"
-  clearance_level: "high"
-
-# Output Preferences
-output:
-  format: "table"  # json, table, csv
-  color: true
-
-# Audit Logging
-audit:
-  local_log: true
-  log_customers_path: "~/.vkit/audit.log"
-
-# Request Settings
-request:
-  default_ttl: 3600  # 1 hour
-  auto_retry: true
-  retry_attempts: 3
-```
-
-### Environment Variables
-
-Override config file with environment variables:
-
-```bash
-# Required
-export VKIT_API_URL="https://vaultkit.company.com"
-
-# Optional
-export VKIT_CONFIg_customers_PATH="~/.vkit/config.yaml"
-export VKIT_AUTH_TOKEN="eyJhbGciOiJIUzI1NiIs..."
-export VKIT_DEFAULT_DATASOURCE="production_pg"
-export VKIT_OUTPUT_FORMAT="json"
-```
-
-### Precedence Order
-
-1. Command-line flags (highest priority)
-2. Environment variables
-3. Configuration file
-4. Built-in defaults (lowest priority)
-
----
-
 ## 🔬 Advanced Usage
 
 ### Scripting with vkit
@@ -992,7 +930,7 @@ jobs:
             --policies_dir config/policies \
             --registry_dir config \
             --out policy_bundle.json \
-            --org ${{ secrets.ORg_customers_ID }}
+            --org ${{ secrets.ORG_ID }}
       
       - name: Validate Bundle
         run: vkit policy validate --bundle policy_bundle.json
@@ -1001,7 +939,7 @@ jobs:
         run: |
           vkit policy deploy \
             --bundle policy_bundle.json \
-            --org ${{ secrets.ORg_customers_ID }} \
+            --org ${{ secrets.ORG_ID }} \
             --activate
 ```
 
@@ -1019,7 +957,7 @@ vkit requests list --format json | jq 'group_by(.state) | map({state: .[0].state
 
 **Find high-value transactions:**
 ```bash
-vkit fetch --grant g_customers_abc123 --format json | jq '.data[] | select(.amount > 10000)'
+vkit fetch --grant gr_abc123 --format json | jq '.data[] | select(.amount > 10000)'
 ```
 
 ---
@@ -1073,7 +1011,7 @@ docker compose up
 **Problem:**
 ```
 Error: Grant has expired
-Grant ID: g_customers_abc123xyz
+Grant ID: gr_abc123xyz
 Expired at: 2024-01-15 12:00:00 UTC
 ```
 
@@ -1183,7 +1121,7 @@ bundle exec rubocop -a
 
 ## 📚 Additional Resources
 
-- **Main Repository**: [github.com/yourorg/vaultkit](https://github.com/yourorg/vaultkit)
+- **Main Repository**: [github.com/yourorg/vaultkit](https://github.com/ndbaba1/vaultkitcli.git)
 - **Documentation**: [docs.vaultkit.io](https://docs.vaultkit.io)
 - **AQL Specification**: [docs.vaultkit.io/aql](https://docs.vaultkit.io/aql)
 - **Policy Reference**: [docs.vaultkit.io/policies](https://docs.vaultkit.io/policies)
@@ -1194,15 +1132,6 @@ bundle exec rubocop -a
 ## 📄 License
 
 VaultKit CLI is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
-
----
-
-## 💬 Support
-
-- **Issues**: [github.com/yourorg/vaultkit-cli/issues](https://github.com/yourorg/vaultkit-cli/issues)
-- **Discussions**: [github.com/yourorg/vaultkit-cli/discussions](https://github.com/yourorg/vaultkit-cli/discussions)
-- **Email**: support@vaultkit.io
-- **Slack**: [vaultkit.slack.com](https://vaultkit.slack.com)
 
 ---
 
