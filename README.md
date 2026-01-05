@@ -129,7 +129,7 @@ vkit request --aql '{
 
 If granted immediately:
 ```bash
-vkit fetch --grant gr_abc123xyz
+vkit fetch --grant g_customers_abc123xyz
 ```
 
 If approval required:
@@ -138,7 +138,7 @@ If approval required:
 vkit requests list --state pending
 
 # After approval
-vkit fetch --grant gr_abc123xyz
+vkit fetch --grant g_customers_abc123xyz
 ```
 
 ---
@@ -212,12 +212,12 @@ vkit request --aql '{
 
 # Output:
 # ✓ Request granted immediately
-# Grant ID: gr_abc123xyz
+# Grant ID: g_customers_abc123xyz
 # TTL: 4 hours
-# Use: vkit fetch --grant gr_abc123xyz
+# Use: vkit fetch --grant g_customers_abc123xyz
 
 # 2. Fetch data
-vkit fetch --grant gr_abc123xyz --format table
+vkit fetch --grant g_customers_abc123xyz --format table
 ```
 
 ### Workflow 2: Approval Required
@@ -241,7 +241,7 @@ vkit request --aql '{
 vkit requests list --state pending
 
 # 3. After approval, fetch data
-vkit fetch --grant gr_approved_abc123
+vkit fetch --grant g_customers_approved_abc123
 ```
 
 ### Workflow 3: Denied Access
@@ -491,16 +491,16 @@ vkit fetch --grant <GRANT_REF> [--format FORMAT]
 **Examples:**
 ```bash
 # Fetch and display as table
-vkit fetch --grant gr_abc123xyz
+vkit fetch --grant g_customers_abc123xyz
 
 # Fetch as JSON
-vkit fetch --grant gr_abc123xyz --format json
+vkit fetch --grant g_customers_abc123xyz --format json
 
 # Fetch and save to CSV
-vkit fetch --grant gr_abc123xyz --format csv --output results.csv
+vkit fetch --grant g_customers_abc123xyz --format csv --output results.csv
 
 # Pipe to jq for processing
-vkit fetch --grant gr_abc123xyz --format json | jq '.data[] | select(.revenue > 1000)'
+vkit fetch --grant g_customers_abc123xyz --format json | jq '.data[] | select(.revenue > 1000)'
 ```
 
 ---
@@ -630,7 +630,7 @@ vkit datasource remove <DATASOURCE_ID> [--force]
 
 **Example:**
 ```bash
-vkit datasource remove old_staging_db --force
+vkit datasource remove old_staging_customers_db --force
 ```
 
 ---
@@ -884,7 +884,7 @@ output:
 # Audit Logging
 audit:
   local_log: true
-  log_path: "~/.vkit/audit.log"
+  log_customers_path: "~/.vkit/audit.log"
 
 # Request Settings
 request:
@@ -902,7 +902,7 @@ Override config file with environment variables:
 export VKIT_API_URL="https://vaultkit.company.com"
 
 # Optional
-export VKIT_CONFIG_PATH="~/.vkit/config.yaml"
+export VKIT_CONFIg_customers_PATH="~/.vkit/config.yaml"
 export VKIT_AUTH_TOKEN="eyJhbGciOiJIUzI1NiIs..."
 export VKIT_DEFAULT_DATASOURCE="production_pg"
 export VKIT_OUTPUT_FORMAT="json"
@@ -992,7 +992,7 @@ jobs:
             --policies_dir config/policies \
             --registry_dir config \
             --out policy_bundle.json \
-            --org ${{ secrets.ORG_ID }}
+            --org ${{ secrets.ORg_customers_ID }}
       
       - name: Validate Bundle
         run: vkit policy validate --bundle policy_bundle.json
@@ -1001,7 +1001,7 @@ jobs:
         run: |
           vkit policy deploy \
             --bundle policy_bundle.json \
-            --org ${{ secrets.ORG_ID }} \
+            --org ${{ secrets.ORg_customers_ID }} \
             --activate
 ```
 
@@ -1019,7 +1019,7 @@ vkit requests list --format json | jq 'group_by(.state) | map({state: .[0].state
 
 **Find high-value transactions:**
 ```bash
-vkit fetch --grant gr_abc123 --format json | jq '.data[] | select(.amount > 10000)'
+vkit fetch --grant g_customers_abc123 --format json | jq '.data[] | select(.amount > 10000)'
 ```
 
 ---
@@ -1073,7 +1073,7 @@ docker compose up
 **Problem:**
 ```
 Error: Grant has expired
-Grant ID: gr_abc123xyz
+Grant ID: g_customers_abc123xyz
 Expired at: 2024-01-15 12:00:00 UTC
 ```
 
