@@ -4,7 +4,7 @@ require_relative "../lib/vkit"
 require_relative "../lib/vkit/cli/errors"
 
 begin
-  Vkit::CLI::BaseCLI.start(ARGV)
+  Vkit::CLI.start(ARGV)
 
 rescue Vkit::CLI::Error => e
   warn "❌ #{e.message}"

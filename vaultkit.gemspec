@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "lib/vkit/version"
+
 Gem::Specification.new do |spec|
   spec.name          = "vaultkit"
-  spec.version       = "0.1.2"
+  spec.version       = Vkit::VERSION
   spec.authors       = ["Nnamdi Ogundu"]
   spec.email         = ["founders@vaultkit.io"]
 
