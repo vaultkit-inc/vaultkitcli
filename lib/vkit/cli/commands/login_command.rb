@@ -31,7 +31,7 @@ module Vkit
           result =
             case auth
             when "oidc"
-              oidc_flow(client, discovery["oidc"]["login_url"])
+              oidc_flow(client)
             when "password"
               password_flow(client)
             when "token"
@@ -55,20 +55,20 @@ module Vkit
 
         private
 
-        def oidc_flow(client, login_url)
+        def oidc_flow(client)
           start = client.start_cli_login
           poll_token = start["poll_token"]
-
+          login_url  = start["login_url"]
+        
           open_browser(login_url)
           puts "⏳ Waiting for authentication to complete..."
-
+        
           loop do
             res = client.poll_cli_login(poll_token)
-
+        
             case res.code.to_i
             when 204
               sleep 2
-              next
             when 200
               body = JSON.parse(res.body)
               return {
@@ -83,7 +83,7 @@ module Vkit
               raise "Unexpected response: #{res.code}"
             end
           end
-        end
+        end        
 
         def password_flow(client)
           email = @email || prompt("Email")

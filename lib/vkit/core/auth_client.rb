@@ -29,11 +29,15 @@ module Vkit
       end
 
       def poll_cli_login(poll_token)
-        uri = uri_for("/auth/cli/poll?token=#{poll_token}")
-        req = Net::HTTP::Get.new(uri)
-
+        uri = uri_for("/auth/cli/poll")
+        req = Net::HTTP::Post.new(uri)
+        req["Content-Type"] = "application/json"
+        req.body = JSON.dump(
+          poll_token: poll_token
+        )
+      
         http_request(uri, req, allow_non_200: true)
-      end
+      end      
 
       def password_login(email:, password:)
         uri = uri_for("/api/users/sign_in")
@@ -65,6 +69,14 @@ module Vkit
 
         body["user"]
       end
+
+      def logout(token)
+        uri = uri_for("/api/users/sign_out")
+        req = Net::HTTP::Delete.new(uri)
+        req["Authorization"] = "Bearer #{token}"
+      
+        http_request(uri, req, allow_non_200: true)
+      end      
 
       private
 
