@@ -1,16 +1,16 @@
 {
   "bundle": {
     "format_version": "v1",
-    "org_slug": "acme",
-    "bundle_version": "eefc2e079eb65209ff51978e620c0185cab6c490",
-    "created_at": "2025-12-29T22:33:24Z",
+    "org_slug": "acme-inc",
+    "bundle_version": "eb80f9a39f9ed7d8ddda818c106bb1bc1092e7d2",
+    "created_at": "2026-01-22T05:40:00Z",
     "source": {
       "type": "git",
       "repo": "git@github.com:ndbaba1/vaultkitcli.git",
-      "ref": "main",
-      "commit_sha": "eefc2e079eb65209ff51978e620c0185cab6c490"
+      "ref": "added_version_module",
+      "commit_sha": "eb80f9a39f9ed7d8ddda818c106bb1bc1092e7d2"
     },
-    "checksum": "be79119d64550ab2c167aeb29c49a5043ed4b7c8d65f77a183c87c14166cf2bb"
+    "checksum": "916f9ff561e804b04ac40e1c25ddf8f13bf89f78a5b841661597fe496f4e2940"
   },
   "registry": {
     "datasets": [
@@ -241,6 +241,35 @@
       "ttl_seconds": "1h"
     },
     {
+      "id": "hide_customers_dataset_from_analysts",
+      "description": "Hide customers dataset from analyst discovery in production.",
+      "match": {
+        "dataset": "customers",
+        "context": {
+          "requester_role": "analyst"
+        }
+      },
+      "action": "deny",
+      "reason": "Customers dataset is not discoverable by analysts.",
+      "ttl_seconds": "1h"
+    },
+    {
+      "id": "hide_pii_fields_from_analysts",
+      "description": "Hide PII fields in customers dataset from analyst discovery.",
+      "match": {
+        "dataset": "customers",
+        "context": {
+          "requester_role": "analyst"
+        },
+        "fields": {
+          "sensitivity": "pii"
+        }
+      },
+      "action": "deny",
+      "reason": "PII fields are not discoverable by analysts.",
+      "ttl_seconds": "1h"
+    },
+    {
       "id": "mask_non_id_fields_for_support",
       "description": "Support agents can view only IDs; all other fields must be masked.",
       "match": {
@@ -275,7 +304,7 @@
       "match": {
         "dataset": "orders",
         "fields": {
-          "sensitivity": "financial"
+          "category": "financial"
         }
       },
       "action": "require_approval",
@@ -283,7 +312,7 @@
       "approval": {
         "approver_role": "analyst"
       },
-      "ttl_seconds": "2h"
+      "ttl_seconds": "1h"
     }
   ],
   "signing": null

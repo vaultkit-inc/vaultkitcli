@@ -2,6 +2,7 @@ require "json"
 require "yaml"
 require "digest"
 require "time"
+require_relative "policy_validator"
 
 module Vkit
   module Policy
@@ -40,6 +41,9 @@ module Vkit
         files.map do |f|
           data = YAML.load_file(f)
           raise "Policy file #{f} must be a Hash" unless data.is_a?(Hash)
+
+          PolicyValidator.validate!(data, file: File.basename(f))
+
           data.merge("__file" => File.basename(f))
         end
       end
