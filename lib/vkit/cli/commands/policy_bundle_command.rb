@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require_relative "../../policy/bundle_compiler"
+require_relative "../../policy/validation_error"
 
 module Vkit
   module CLI
@@ -58,6 +59,9 @@ module Vkit
             puts "   Checksum: #{bundle.dig("bundle", "checksum")}"
             puts "   Output:   #{out}"
           end
+        rescue Vkit::Policy::ValidationError => e
+          puts e.message
+          exit 1
         end
 
         private

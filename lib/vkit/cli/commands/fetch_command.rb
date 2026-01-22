@@ -16,8 +16,8 @@ module Vkit
               body: {}
             )
 
-            rows = response["rows"] || []
-            meta = response["meta"] || {}
+            rows = response.dig("rows", "rows") || []
+            meta = response.dig("rows", "meta") || {}
 
             print_result(rows, meta, format)
           end

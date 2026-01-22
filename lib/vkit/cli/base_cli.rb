@@ -168,6 +168,49 @@ module Vkit
           )
         end
       }
+
+      desc "agents SUBCOMMAND ...ARGS", "Manage agents and automation identities"
+      subcommand "agents", Class.new(Thor) {
+
+        # agents tokens SUBCOMMAND
+        desc "tokens SUBCOMMAND ...ARGS", "Manage agent tokens"
+        subcommand "tokens", Class.new(Thor) {
+
+          # agents tokens list
+          desc "list", "List tokens for an agent"
+          option :format, type: :string, default: "table", enum: %w[table json]
+          def list
+            Commands::AgentTokensListCommand.new.call(
+              agent: options[:agent],
+              format: options[:format]
+            )
+          end
+
+          # agents tokens create
+          desc "create", "Create a new agent token (automation identity)"
+          option :name, required: true, desc: "Human-readable name (e.g. billing-bot)"
+          option :expires_in, type: :string, desc: "Token lifetime (e.g. 1h, 24h, 30d)"
+          option :role, type: :string, default: "agent", desc: "Role assigned to this token"
+          def create
+            Commands::AgentTokensCreateCommand.new.call(
+              name: options[:name],
+              expires_in: options[:expires_in],
+              role: options[:role]
+            )
+          end
+
+          # agents tokens revoke
+          desc "revoke", "Revoke an agent token"
+          option :token, required: true, desc: "Token ID or prefix"
+          option :force, type: :boolean, default: false, desc: "Skip confirmation"
+          def revoke
+            Commands::AgentTokensRevokeCommand.new.call(
+              token: options[:token],
+              force: options[:force]
+            )
+          end
+        }
+      }
     end
   end
 end
