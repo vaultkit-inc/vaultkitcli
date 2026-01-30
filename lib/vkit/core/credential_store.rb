@@ -33,6 +33,22 @@ module Vkit
         true
       end
 
+      def save_user(user)
+        payload = load_payload
+        return unless payload
+      
+        payload["user"] = user
+      
+        case
+        when mac?
+          mac_keychain_store(payload)
+        when linux? && secret_tool_available?
+          linux_secret_service_store(payload)
+        else
+          file_store(payload)
+        end
+      end      
+
       def endpoint
         load_payload&.dig("endpoint")
       end

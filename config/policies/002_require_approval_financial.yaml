@@ -4,10 +4,10 @@ description: "Financial fields require approval before access."
 match:
   dataset: orders
   fields:
-    sensitivity: financial
+    category: financial
 
 action:
   require_approval: true
   approver_role: analyst
   reason: "Access to financial data requires explicit approval."
-  ttl: "2h"
+  ttl: "1h"
