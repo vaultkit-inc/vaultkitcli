@@ -31,6 +31,11 @@ module Vkit
         Commands::LogoutCommand.new.call
       end
 
+      desc "reset", "Clear all stored credentials and configuration"
+      def reset
+        Commands::ResetCommand.new.call
+      end
+
       # REQUEST
       desc "request", "Send an inline JSON AQL request (use --aql or pipe via STDIN)"
       option :aql, type: :string, desc: "AQL JSON payload (inline)"
@@ -68,6 +73,20 @@ module Vkit
         Commands::ApprovalCommand.new.call_deny(
           id: id,
           reason: options[:reason]
+        )
+      end
+
+      desc "approvals:watch", "Watch pending approval requests"
+      option :interval, type: :numeric, default: 3, desc: "Polling interval in seconds"
+      option :format, type: :string, default: "table", enum: %w[table json], desc: "Output format (table for humans, json for automations)"
+      option :pretty, type: :boolean, default: false, desc: "Pretty-print JSON output"
+      option :since, type: :string, desc: "Only show approvals created after this time (ISO8601 or 10m, 2h)"
+      define_method("approvals:watch") do
+        Commands::ApprovalWatchCommand.new.call(
+          interval: options[:interval],
+          format: options[:format],
+          pretty: options[:pretty],
+          since: options[:since]
         )
       end
 
