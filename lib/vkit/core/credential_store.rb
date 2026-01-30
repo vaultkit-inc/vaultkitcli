@@ -2,61 +2,51 @@ require "json"
 require "fileutils"
 require "open3"
 require "rbconfig"
-require "base64"
 
 module Vkit
   module Core
     class CredentialStore
       SERVICE = "vkit"
-      ACCOUNT = "auth_token"
+      ACCOUNT = "credentials"
 
       def initialize
         @os = RbConfig::CONFIG["host_os"]
         @fallback_path = File.join(Dir.home, ".vkit", "credentials.json")
       end
 
-      def save_token(token:, user:)
+      def save(endpoint:, token:, user:)
+        payload = {
+          "endpoint" => endpoint,
+          "token" => token,
+          "user" => user
+        }
+
         case
         when mac?
-          mac_keychain_store(token, user)
+          mac_keychain_store(payload)
         when linux? && secret_tool_available?
-          linux_secret_service_store(token, user)
-        when windows?
-          file_store(token, user) # simple fallback; can enhance with DPAPI
+          linux_secret_service_store(payload)
         else
-          file_store(token, user)
+          file_store(payload)
         end
+
         true
       end
 
-      def load_token
-        data = case
-               when mac?
-                 mac_keychain_load
-               when linux? && secret_tool_available?
-                 linux_secret_service_load
-               when windows?
-                 file_load
-               else
-                 file_load
-               end
-        return nil unless data
-        data["token"]
+      def endpoint
+        load_payload&.dig("endpoint")
       end
 
-      def load_user
-        data = case
-               when mac?
-                 mac_keychain_load
-               when linux? && secret_tool_available?
-                 linux_secret_service_load
-               when windows?
-                 file_load
-               else
-                 file_load
-               end
-        return nil unless data
-        data["user"]
+      def token
+        load_payload&.dig("token")
+      end
+
+      def user
+        load_payload&.dig("user")
+      end
+
+      def logged_in?
+        !!(endpoint && token)
       end
 
       def clear!
@@ -70,7 +60,32 @@ module Vkit
         end
       end
 
-      private
+      def clear_token!
+        payload = load_payload
+        return unless payload
+      
+        payload.delete("token")
+      
+        case
+        when mac?
+          mac_keychain_store(payload)
+        when linux? && secret_tool_available?
+          linux_secret_service_store(payload)
+        else
+          file_store(payload)
+        end
+      end
+
+      def load_payload
+        case
+        when mac?
+          mac_keychain_load
+        when linux? && secret_tool_available?
+          linux_secret_service_load
+        else
+          file_load
+        end
+      end
 
       def mac?
         @os =~ /darwin/
@@ -80,31 +95,30 @@ module Vkit
         @os =~ /linux/
       end
 
-      def windows?
-        @os =~ /mswin|mingw|cygwin/
-      end
-
       def secret_tool_available?
         system("which secret-tool > /dev/null 2>&1")
       end
 
-      # ---------- macOS Keychain ----------
-      def mac_keychain_store(token, user)
-        payload = { token: token, user: user }.to_json
-        # delete any existing entry first
+      def mac_keychain_store(payload)
         mac_keychain_delete
-        cmd = [
+        system(
           "security", "add-generic-password",
           "-a", ACCOUNT,
           "-s", SERVICE,
-          "-w", payload,
-          "-U" # update if exists
-        ]
-        system(*cmd)
+          "-w", payload.to_json,
+          "-U"
+        )
       end
 
       def mac_keychain_load
-        stdout, _stderr, status = Open3.capture3("security", "find-generic-password", "-a", ACCOUNT, "-s", SERVICE, "-w")
+        stdout, _stderr, status =
+          Open3.capture3(
+            "security", "find-generic-password",
+            "-a", ACCOUNT,
+            "-s", SERVICE,
+            "-w"
+          )
+
         return nil unless status.success?
         JSON.parse(stdout)
       rescue
@@ -112,18 +126,35 @@ module Vkit
       end
 
       def mac_keychain_delete
-        system("security", "delete-generic-password", "-a", ACCOUNT, "-s", SERVICE, out: File::NULL, err: File::NULL)
+        system(
+          "security", "delete-generic-password",
+          "-a", ACCOUNT,
+          "-s", SERVICE,
+          out: File::NULL,
+          err: File::NULL
+        )
       end
 
-      # ---------- Linux Secret Service ----------
-      def linux_secret_service_store(token, user)
-        payload = { token: token, user: user }.to_json
-        # secret-tool stores secrets per label/attributes
-        Open3.capture3("secret-tool", "store", "--label=Vkit Token", "service", SERVICE, "account", ACCOUNT, stdin_data: payload)
+      def linux_secret_service_store(payload)
+        Open3.capture3(
+          "secret-tool",
+          "store",
+          "--label=VaultKit Credentials",
+          "service", SERVICE,
+          "account", ACCOUNT,
+          stdin_data: payload.to_json
+        )
       end
 
       def linux_secret_service_load
-        stdout, _stderr, status = Open3.capture3("secret-tool", "lookup", "service", SERVICE, "account", ACCOUNT)
+        stdout, _stderr, status =
+          Open3.capture3(
+            "secret-tool",
+            "lookup",
+            "service", SERVICE,
+            "account", ACCOUNT
+          )
+
         return nil unless status.success?
         JSON.parse(stdout)
       rescue
@@ -131,21 +162,13 @@ module Vkit
       end
 
       def linux_secret_service_delete
-        # secret-tool has no direct delete; overwrite with empty or rely on keyring tools
-        # Fallback to storing blank
-        linux_secret_service_store("", {})
+        linux_secret_service_store({})
       end
 
-      # ---------- File fallback (0600) ----------
-      def file_store(token, user)
-        dir = File.dirname(@fallback_path)
-        FileUtils.mkdir_p(dir)
-        unless File.exist?(@fallback_path)
-          File.write(@fallback_path, "{}")
-          File.chmod(0o600, @fallback_path)
-        end
-        data = { "token" => token, "user" => user }
-        File.write(@fallback_path, JSON.pretty_generate(data))
+      def file_store(payload)
+        FileUtils.mkdir_p(File.dirname(@fallback_path))
+        File.write(@fallback_path, JSON.pretty_generate(payload))
+        File.chmod(0o600, @fallback_path)
       end
 
       def file_load

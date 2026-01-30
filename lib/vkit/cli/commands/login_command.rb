@@ -1,109 +1,134 @@
 require "io/console"
 require_relative "../../core/auth_client"
 require_relative "../../core/credential_store"
-require_relative "../../core/audit_logger"
 require "base64"
 require "json"
 
 module Vkit
   module CLI
     module Commands
-      class LoginCommand
-        def initialize(server: nil, email: nil)
-          @server = server || Vkit::Core::AuthClient::DEFAULT_BASE_URL
-          @email  = email
+      class LoginCommand < BaseCommand
+        def requires_auth?
+          false
+        end
+
+        def initialize(endpoint: nil, email: nil)
+          @endpoint = endpoint
+          @email = email
         end
 
         def call
-          email = @email || begin
-                              print "Email: "
-                              STDIN.gets.strip
-                            end
+          endpoint =
+            @endpoint ||
+            ENV["VKIT_ENDPOINT"] ||
+            credential_store.endpoint ||
+            prompt("VaultKit Control Plane URL")
+          client = Vkit::Core::AuthClient.new(base_url: endpoint)
 
-          print "Password: "
-          password = STDIN.noecho(&:gets).to_s.strip
-          puts
+          discovery = client.discover
+          auth = discovery["preferred"]
 
-          client = Vkit::Core::AuthClient.new(base_url: @server)
-          res = client.login(email: email, password: password)
+          result =
+            case auth
+            when "oidc"
+              oidc_flow(client, discovery["oidc"]["login_url"])
+            when "password"
+              password_flow(client)
+            when "token"
+              token_flow(client)
+            else
+              raise "Unsupported auth mode: #{auth}"
+            end
 
-          save_credentials(res[:token], res[:user])
-
-          Vkit::Core::AuditLogger.log(
-            event: "auth.login.success",
-            actor: email,
-            details: {
-              server: @server,
-              role: res[:user]["role"],
-              org: res[:user]["organization_id"]
-            }
+          store = Vkit::Core::CredentialStore.new
+          store.save(
+            endpoint: endpoint,
+            token: result[:token],
+            user: result[:user]
           )
 
-          puts "✅ Logged in as #{res[:user]["email"]} (role: #{res[:user]["role"]})"
+          puts "✅ Logged in as #{result[:user]['email']}"
         rescue => e
-          Vkit::Core::AuditLogger.log(
-            event: "auth.login.failure",
-            actor: email,
-            details: { error: e.message }
-          )
-
           puts "❌ Login failed: #{e.message}"
           exit 1
         end
 
-        def call_whoami
-          store = Vkit::Core::CredentialStore.new
-          token = store.load_token
-          user  = store.load_user
-
-          if token.nil? || user.nil?
-            puts "Not logged in. Run: vkit login"
-            exit 1
-          end
-
-          payload = decode_jwt_payload(token)
-          exp = payload["exp"] ? Time.at(payload["exp"]).utc : nil
-
-          Vkit::Core::AuditLogger.log(
-            event: "auth.whoami",
-            actor: user["email"],
-            details: { token_exp: exp }
-          )
-
-          puts "👤 #{user["email"]} (role: #{user["role"]}, org: #{user["organization_id"]})"
-          puts "🔒 Token expires: #{exp} (#{time_left(exp)})" if exp
-        end
-
-        def call_logout
-          store = Vkit::Core::CredentialStore.new
-          user  = store.load_user
-
-          Vkit::Core::AuditLogger.log(
-            event: "auth.logout",
-            actor: user ? user["email"] : nil,
-            details: {}
-          )
-
-          store.clear!
-          puts "🧹 Logged out."
-        end
-
         private
 
-        def save_credentials(token, user)
-          store = Vkit::Core::CredentialStore.new
-          store.save_token(token: token, user: user)
+        def oidc_flow(client, login_url)
+          start = client.start_cli_login
+          poll_token = start["poll_token"]
+
+          open_browser(login_url)
+          puts "⏳ Waiting for authentication to complete..."
+
+          loop do
+            res = client.poll_cli_login(poll_token)
+
+            case res.code.to_i
+            when 204
+              sleep 2
+              next
+            when 200
+              body = JSON.parse(res.body)
+              return {
+                token: body["token"],
+                user: body["user"]
+              }
+            when 410
+              raise "Login session expired"
+            when 404
+              raise "Invalid login session"
+            else
+              raise "Unexpected response: #{res.code}"
+            end
+          end
         end
 
-        def decode_jwt_payload(token)
-          _header, payload, _sig = token.split(".")
-          JSON.parse(Base64.urlsafe_decode64(payload))
+        def password_flow(client)
+          email = @email || prompt("Email")
+          password = prompt_password("Password")
+
+          res = client.password_login(email: email, password: password)
+
+          {
+            token: res[:token],
+            user: res[:user]
+          }
         end
 
-        def time_left(exp)
-          diff = exp - Time.now
-          return "expired" if diff < 0
-          "#{(diff / 60).to_i}m"
+        def token_flow(client)
+          token = ENV["VAULTKIT_TOKEN"] || prompt_password("API Token")
+          user = client.whoami(token)
+
+          {
+            token: token,
+            user: user
+          }
+        end
+
+        def prompt(label)
+          print "#{label}: "
+          STDIN.gets.strip
+        end
+
+        def prompt_password(label)
+          print "#{label}: "
+          STDIN.noecho(&:gets).to_s.strip.tap { puts }
+        end
+
+        def open_browser(url)
+          os = RbConfig::CONFIG["host_os"]
+
+          if os =~ /darwin/
+            system("open", url)
+          elsif os =~ /linux/
+            system("xdg-open", url)
+          elsif os =~ /mswin|mingw|cygwin/
+            system("start", url)
+          else
+            puts "Open this URL in your browser:\n#{url}"
+          end
         end
       end
     end
