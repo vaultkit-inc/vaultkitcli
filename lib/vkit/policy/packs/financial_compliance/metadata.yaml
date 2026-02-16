@@ -1,0 +1,10 @@
+__pack_meta:
+  name: financial_compliance
+  version: "1.0.0"
+  layer: 40
+  description: "Financial controls: approvals, masking, audit-friendly TTLs for financial + payment data."
+  dependencies:
+    - starter
+  priority_band:
+    min: 2000
+    max: 2999

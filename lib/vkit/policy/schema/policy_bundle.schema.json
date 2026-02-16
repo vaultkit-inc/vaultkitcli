@@ -67,7 +67,22 @@
             "min_control_plane": { "type": "string" },
             "max_control_plane": { "type": "string" }
           }
+        },
+
+        "installed_packs": {
+          "type": "array",
+          "description": "List of policy packs active when this bundle was compiled.",
+          "items": {
+            "type": "object",
+            "required": ["name", "version"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          }
         }
+
       }
     },
 
@@ -138,7 +153,7 @@
           }
         }
       }
-    },    
+    },
 
     "policies": {
       "type": "array",

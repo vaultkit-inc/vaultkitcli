@@ -1,0 +1,15 @@
+id: fin_deny_non_admin_pci_prod
+description: "Deny PCI-tagged data access in production unless admin."
+priority: 2300
+
+match:
+  fields:
+    contains: ["pci"]
+
+context:
+  environment: production
+
+action:
+  deny: true
+  reason: "PCI-tagged data in production is restricted to admins."
+  ttl: "1h"

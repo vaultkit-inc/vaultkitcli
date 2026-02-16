@@ -1,0 +1,14 @@
+id: fin_mask_payment_tokens
+description: "Mask payment tokens / card-related fields everywhere."
+priority: 2200
+
+match:
+  fields:
+    contains: ["pci", "card", "payment_token"]
+
+context: {}
+
+action:
+  mask: true
+  reason: "Payment tokens/card-related data must never be exposed in raw form."
+  ttl: "24h"

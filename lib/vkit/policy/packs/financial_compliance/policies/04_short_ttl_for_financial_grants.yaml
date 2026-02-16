@@ -1,0 +1,14 @@
+id: fin_short_ttl_financial
+description: "Short TTL for financial access grants to reduce risk window."
+priority: 2400
+
+match:
+  fields:
+    category: financial
+
+context: {}
+
+action:
+  allow: true
+  reason: "Financial grants must expire quickly."
+  ttl: "30m"

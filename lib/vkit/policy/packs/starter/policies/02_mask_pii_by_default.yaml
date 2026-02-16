@@ -1,0 +1,13 @@
+id: mask_pii_by_default
+description: "Mask PII fields by default unless explicitly allowed."
+
+match:
+  fields:
+    sensitivity: pii
+
+priority: 80
+
+action:
+  mask: true
+  reason: "PII is masked by default for safety."
+  ttl: "1h"

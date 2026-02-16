@@ -36,6 +36,18 @@ module Vkit
         Commands::ResetCommand.new.call
       end
 
+      desc "init", "Initialize a new VaultKit project"
+      option :dir, type: :string, default: ".", desc: "Target directory"
+      option :with, type: :string, desc: "Comma-separated policy packs to install (e.g. starter,ai_safety)"
+      def init
+        packs = options[:with]&.split(",")&.map(&:strip)
+
+        Commands::InitCommand.new.call(
+          dir: options[:dir],
+          packs: packs
+        )
+      end
+
       # REQUEST
       desc "request", "Send an inline JSON AQL request (use --aql or pipe via STDIN)"
       option :aql, type: :string, desc: "AQL JSON payload (inline)"
@@ -98,6 +110,18 @@ module Vkit
         Commands::FetchCommand.new.call(
           grant_ref: options[:grant],
           format: options[:format]
+        )
+      end
+
+      desc "grant:revoke", "Revoke a grant"
+      option :grant, type: :string, required: true
+      option :reason, type: :string
+      option :force, type: :boolean, default: false
+      define_method("grant:revoke") do
+        Commands::GrantRevokeCommand.new.call(
+          grant_ref: options[:grant],
+          reason: options[:reason],
+          force: options[:force]
         )
       end
 
@@ -186,6 +210,73 @@ module Vkit
             activate: options[:activate]
           )
         end
+
+        desc "revoke", "Revoke a policy bundle version"
+        option :bundle_version, type: :string, required: true
+        option :reason, type: :string
+        option :force, type: :boolean, default: false
+
+        def revoke
+          Commands::PolicyRevokeCommand.new.call(
+            bundle_version: options[:bundle_version],
+            reason: options[:reason],
+            force: options[:force]
+          )
+        end
+
+        desc "pack SUBCOMMAND ...ARGS", "Manage policy packs"
+        subcommand "pack", Class.new(Thor) {
+
+          desc "list", "List policy packs"
+          option :dir, type: :string, default: "."
+          def list
+            Commands::PolicyPackListCommand.new.call(
+              dir: options[:dir]
+            )
+          end
+
+          desc "add NAME", "Install a policy pack"
+          option :dir, type: :string, default: "."
+          option :force, type: :boolean, default: false
+          def add(name)
+            Commands::PolicyPackAddCommand.new.call(
+              pack_name: name,
+              dir: options[:dir],
+              force: options[:force]
+            )
+          end
+
+          desc "remove NAME", "Remove an installed policy pack"
+          option :dir, type: :string, default: "."
+          option :force, type: :boolean, default: false
+          def remove(name)
+            Commands::PolicyPackRemoveCommand.new.call(
+              pack_name: name,
+              dir: options[:dir],
+              force: options[:force]
+            )
+          end
+
+          desc "info NAME", "Show information about a policy pack"
+          option :dir, type: :string, default: "."
+          def info(name)
+            Commands::PolicyPackInfoCommand.new.call(
+              pack_name: name,
+              dir: options[:dir]
+            )
+          end
+
+          desc "upgrade [NAME]", "Upgrade installed policy packs (all if NAME omitted)"
+          option :dir, type: :string, default: "."
+          option :force, type: :boolean, default: false
+          def upgrade(name = nil)
+            Commands::PolicyPackUpgradeCommand.new.call(
+              pack_name: name,
+              dir: options[:dir],
+              force: options[:force]
+            )
+          end
+        }
       }
 
       desc "agents SUBCOMMAND ...ARGS", "Manage agents and automation identities"

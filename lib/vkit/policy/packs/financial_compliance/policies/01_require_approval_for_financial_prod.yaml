@@ -1,0 +1,16 @@
+id: fin_require_approval_financial_prod
+description: "Require approval for financial-category fields in production."
+priority: 2100
+
+match:
+  fields:
+    category: financial
+
+context:
+  environment: production
+
+action:
+  require_approval: true
+  approver_role: finance_manager
+  reason: "Financial data access in production requires finance approval."
+  ttl: "1h"

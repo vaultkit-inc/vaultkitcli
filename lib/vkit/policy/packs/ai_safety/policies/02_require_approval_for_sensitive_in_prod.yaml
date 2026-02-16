@@ -1,0 +1,16 @@
+id: ai_require_approval_sensitive_prod
+description: "Require approval when accessing sensitive fields in production."
+priority: 1200
+
+match:
+  fields:
+    contains: ["pii", "financial", "phi", "secrets"]
+
+context:
+  environment: production
+
+action:
+  require_approval: true
+  approver_role: security
+  reason: "Sensitive data access in production requires security review."
+  ttl: "1h"

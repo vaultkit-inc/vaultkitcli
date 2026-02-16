@@ -27,6 +27,7 @@ module Vkit
           "signing" => nil
         }
 
+        bundle["bundle"]["installed_packs"] = load_installed_packs
         canonical = canonical_json(bundle)
         bundle["bundle"]["checksum"] = Digest::SHA256.hexdigest(canonical)
 
@@ -153,6 +154,23 @@ module Vkit
           value
         end
       end
+
+      def self.load_installed_packs
+        tracking_path = File.join(".vkit", "packs.yaml")
+        return [] unless File.exist?(tracking_path)
+      
+        data = YAML.safe_load(File.read(tracking_path), permitted_classes: [], permitted_symbols: [], aliases: true)
+        packs = data["installed_packs"] || {}
+      
+        packs.map do |name, meta|
+          {
+            "name" => name,
+            "version" => meta["version"]
+          }
+        end
+      rescue
+        []
+      end      
     end
   end
 end
