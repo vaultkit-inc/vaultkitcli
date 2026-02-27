@@ -1,0 +1,17 @@
+id: require_approval_high_sensitivity
+description: "Require approval before accessing high sensitivity data."
+
+match:
+  fields:
+    sensitivity: high
+
+context:
+  environment: production
+
+priority: 85
+
+action:
+  require_approval: true
+  approver_role: data_owner
+  reason: "High sensitivity data requires manual review in production."
+  ttl: "1h"

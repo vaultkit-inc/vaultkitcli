@@ -1,0 +1,14 @@
+id: block_cross_region
+description: "Block cross-region access to prevent data residency violations."
+
+match: {}
+
+context:
+  requester_region: US
+  dataset_region: EU
+
+priority: 95
+
+action:
+  deny: true
+  reason: "Cross-region data access is not permitted."

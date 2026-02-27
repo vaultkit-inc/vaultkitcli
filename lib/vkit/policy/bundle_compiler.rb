@@ -27,6 +27,7 @@ module Vkit
           "signing" => nil
         }
 
+        bundle["bundle"]["installed_packs"] = load_installed_packs
         canonical = canonical_json(bundle)
         bundle["bundle"]["checksum"] = Digest::SHA256.hexdigest(canonical)
 
@@ -103,7 +104,31 @@ module Vkit
 
       def self.extract_masking(p)
         return unless p.dig("action", "mask")
-        p["masking"]
+      
+        raw =
+          p["masking"] ||
+          p.dig("action", "masking") || {}
+      
+        default_method =
+          normalize_mask_method(raw["default_method"]) if raw["default_method"]
+      
+        rules =
+          case raw["rules"]
+          when Hash
+            raw["rules"].each_with_object({}) do |(field, method), acc|
+              acc[field.to_s] = normalize_mask_method(method)
+            end
+          else
+            {}
+          end
+      
+        result = {}
+        result["default_method"] = default_method if default_method
+        result["rules"] = rules if rules.any?
+      
+        return if result.empty?
+      
+        result
       end
 
       def self.normalize_registry(raw)
@@ -138,6 +163,16 @@ module Vkit
         end
       end
 
+      def self.normalize_mask_method(method)
+        case method.to_s
+        when "redact"   then "full"
+        when "hash"     then "hash"
+        when "truncate" then "partial"
+        when "nullify"  then "full"
+        else "full"
+        end
+      end
+
       # Canonicalization
       def self.canonical_json(obj)
         JSON.generate(sort_keys_deep(obj))
@@ -153,6 +188,23 @@ module Vkit
           value
         end
       end
+
+      def self.load_installed_packs
+        tracking_path = File.join(".vkit", "packs.yaml")
+        return [] unless File.exist?(tracking_path)
+      
+        data = YAML.safe_load(File.read(tracking_path), permitted_classes: [], permitted_symbols: [], aliases: true)
+        packs = data["installed_packs"] || {}
+      
+        packs.map do |name, meta|
+          {
+            "name" => name,
+            "version" => meta["version"]
+          }
+        end
+      rescue
+        []
+      end      
     end
   end
 end

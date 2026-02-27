@@ -1,0 +1,10 @@
+__pack_meta:
+  name: ai_safety
+  version: "1.0.0"
+  layer: 30
+  description: "Secure defaults for AI/agent access: least-privilege, approvals for sensitive, environment controls."
+  dependencies:
+    - starter
+  priority_band:
+    min: 1000
+    max: 1999

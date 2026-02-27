@@ -1,0 +1,14 @@
+id: ai_deny_agent_prod_without_clearance
+description: "Deny agent access in production unless requester_clearance is high/admin."
+priority: 1100
+
+match: {}
+
+context:
+  environment: production
+  requester_role: agent
+
+action:
+  deny: true
+  reason: "Automation/agents in production require elevated clearance."
+  ttl: "1h"

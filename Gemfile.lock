@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    vaultkit (1.0.0)
+    vaultkit (1.0.7)
       thor (~> 1.2)
 
 GEM

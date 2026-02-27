@@ -1,0 +1,10 @@
+id: default_ttl_for_allows
+description: "Apply a default TTL to allow decisions."
+
+match: {}
+
+priority: 10
+
+action:
+  allow: true
+  ttl: "4h"

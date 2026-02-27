@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Vkit
   module Policy
     class PolicyValidator
@@ -28,7 +30,7 @@ module Vkit
           MSG
         end
 
-        validate_action!(action, prefix)
+        validate_action!(action, policy, prefix)
         true
       end
 
@@ -41,7 +43,7 @@ module Vkit
         MSG
       end
 
-      def self.validate_action!(action, prefix)
+      def self.validate_action!(action, policy, prefix)
         intents = ACTION_KEYS.select { |k| action[k] == true }
 
         if intents.empty?
@@ -81,7 +83,8 @@ module Vkit
           require_string!(action, "approver_role", prefix)
 
         when "mask"
-          # masking config can be validated later
+          # masking is optional, but if present must be valid
+          validate_masking!(policy, prefix) if policy.key?("masking")
 
         when "allow"
           # nothing required
@@ -121,6 +124,73 @@ module Vkit
         else
           raise ValidationError, <<~MSG
             #{prefix}ttl must be a string duration (e.g. "1h") or an integer (seconds).
+          MSG
+        end
+      end
+
+      # Masking validation (aligned with compiler + runtime)
+      def self.validate_masking!(policy, prefix)
+        masking = policy["masking"]
+        return unless masking
+
+        unless masking.is_a?(Hash)
+          raise ValidationError, "#{prefix}masking must be a mapping."
+        end
+
+        allowed_keys = %w[default_method rules]
+        unknown_keys = masking.keys - allowed_keys
+
+        if unknown_keys.any?
+          raise ValidationError, <<~MSG
+            #{prefix}Unknown keys in masking: #{unknown_keys.join(', ')}
+
+            Allowed keys:
+              - default_method
+              - rules
+          MSG
+        end
+
+        if masking["default_method"]
+          validate_mask_method!(
+            masking["default_method"],
+            prefix,
+            "masking.default_method"
+          )
+        end
+
+        if masking["rules"]
+          unless masking["rules"].is_a?(Hash)
+            raise ValidationError,
+              "#{prefix}masking.rules must be a mapping of field → method."
+          end
+
+          masking["rules"].each do |field, method|
+            validate_mask_method!(
+              method,
+              prefix,
+              "masking.rules.#{field}"
+            )
+          end
+        end
+      end
+
+      def self.validate_mask_method!(method, prefix, path)
+        allowed = %w[redact hash truncate nullify full partial]
+
+        unless allowed.include?(method.to_s)
+          raise ValidationError, <<~MSG
+            #{prefix}Invalid masking method at #{path}.
+
+            Allowed values:
+              - redact
+              - hash
+              - truncate
+              - nullify
+              - full
+              - partial
+
+            Got:
+              #{method.inspect}
           MSG
         end
       end

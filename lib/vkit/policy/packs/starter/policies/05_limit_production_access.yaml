@@ -1,0 +1,16 @@
+id: limit_production_access
+description: "Restrict production data access to approved roles."
+
+match: {}
+
+context:
+  environment: production
+  requester_role: analyst
+
+priority: 70
+
+action:
+  require_approval: true
+  approver_role: admin
+  reason: "Production access for analysts requires approval."
+  ttl: "2h"

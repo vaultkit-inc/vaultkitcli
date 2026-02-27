@@ -16,8 +16,7 @@ module Vkit
               body: {}
             )
 
-            rows = response.dig("rows", "rows") || []
-            meta = response.dig("rows", "meta") || {}
+            rows, meta = normalize_response(response)
 
             print_result(rows, meta, format)
           end
@@ -41,6 +40,24 @@ module Vkit
           else
             raise "Unknown format: #{format}"
           end
+        end
+
+        def normalize_response(response)
+          rows =
+            if response["rows"].is_a?(Array)
+              response["rows"]
+            else
+              response.dig("rows", "rows") || []
+            end
+        
+          meta =
+            if response["meta"].is_a?(Hash)
+              response["meta"]
+            else
+              response.dig("rows", "meta") || {}
+            end
+        
+          [rows, meta]
         end
       end
     end

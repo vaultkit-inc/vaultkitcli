@@ -1,0 +1,9 @@
+__pack_meta:
+  name: starter
+  version: "1.0.0"
+  layer: 10
+  description: "Secure-by-default baseline policies for VaultKit."
+  dependencies: []
+  priority_band:
+    min: 0
+    max: 100
