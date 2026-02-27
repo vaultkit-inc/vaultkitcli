@@ -264,19 +264,15 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "fields": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": ["name", "method"],
-                  "additionalProperties": false,
-                  "properties": {
-                    "name": { "type": "string" },
-                    "method": {
-                      "type": "string",
-                      "enum": ["redact", "hash", "truncate", "nullify"]
-                    }
-                  }
+              "default_method": {
+                "type": "string",
+                "enum": ["full", "hash", "partial"]
+              },
+              "rules": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": ["full", "hash", "partial"]
                 }
               }
             }

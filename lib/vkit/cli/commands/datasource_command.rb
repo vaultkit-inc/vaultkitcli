@@ -8,13 +8,13 @@ module Vkit
       class DatasourceCommand < BaseCommand
         REDACT = "[REDACTED]"
 
-        def add(id:, engine:, username:, password:, config:)
+        def add(id:, engine:, username:, password:, config:, region:, environment:)
           with_auth do
             user = require_admin!
             org  = user["organization_slug"]
-
+        
             config_hash = config ? JSON.parse(config) : {}
-
+        
             response = authenticated_client.post(
               "/api/v1/orgs/#{org}/datasources",
               body: {
@@ -22,14 +22,16 @@ module Vkit
                 engine: engine,
                 username: username,
                 password: password,
+                region: region.upcase,
+                environment: environment,
                 config: config_hash
               }
             )
-
+        
             puts "✅ Datasource created:"
             print_datasource(response)
           end
-        end
+        end        
 
         def list
           with_auth do

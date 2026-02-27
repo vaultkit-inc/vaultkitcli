@@ -59,15 +59,25 @@ module Vkit
           FileUtils.mkdir_p(File.join(dir, "datasets"))
           FileUtils.mkdir_p(File.join(dir, "dist"))
           FileUtils.mkdir_p(File.join(dir, ".vkit"))
-
+        
           registry_path = File.join(dir, "datasets", "registry.yaml")
-          unless File.exist?(registry_path)
+        
+          if File.exist?(registry_path)
+            puts "ℹ️  datasets/registry.yaml already exists — leaving unchanged."
+          else
             File.write(
               registry_path,
-              "# Dataset registry\n# Populate with: vkit scan <datasource> --apply\n"
+              <<~YAML
+                # VaultKit Dataset Registry
+                #
+                # Populate with:
+                #   vkit scan <datasource> --apply
+                #   vkit registry export
+                #
+              YAML
             )
           end
-
+        
           gitignore_path = File.join(dir, ".gitignore")
           unless File.exist?(gitignore_path)
             File.write(
@@ -75,7 +85,7 @@ module Vkit
               "dist/\n.vkit/\n"
             )
           end
-        end
+        end        
       end
     end
   end

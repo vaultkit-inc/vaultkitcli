@@ -1,22 +1,62 @@
 {
   "bundle": {
     "format_version": "v1",
-    "org_slug": "acme-inc",
-    "bundle_version": "98d179c3c8927ce0582e4b6d4742c382c1ef8592",
-    "created_at": "2026-01-25T19:28:25Z",
+    "org_slug": "demolabs",
+    "bundle_version": "86583c97fe178af69b46e208a28046abefb02c9d",
+    "created_at": "2026-02-22T07:12:48Z",
     "source": {
       "type": "git",
-      "repo": "git@github.com:ndbaba1/vaultkitcli.git",
+      "repo": "git@github.com:vaultkit-inc/vaultkitcli.git",
       "ref": "agent_compatibility",
-      "commit_sha": "98d179c3c8927ce0582e4b6d4742c382c1ef8592"
+      "commit_sha": "86583c97fe178af69b46e208a28046abefb02c9d"
     },
-    "checksum": "fa3bb209d3b2ef6dc84a823e35b7c80907d600d7d421c951ce62917edad449e1"
+    "checksum": "9f7a0f5eed912f913688871effd7cac9308edb0717c18623eb3fcd411c8b093c",
+    "installed_packs": [
+      {
+        "name": "starter",
+        "version": "1.0.0"
+      },
+      {
+        "name": "ai_safety",
+        "version": "1.0.0"
+      }
+    ]
   },
   "registry": {
     "datasets": [
       {
+        "name": "categories",
+        "datasource": "production_pg",
+        "fields": [
+          {
+            "name": "id",
+            "type": "integer",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          },
+          {
+            "name": "name",
+            "type": "text",
+            "sensitivity": "medium",
+            "tags": [
+              "pii"
+            ]
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "sensitivity": "low",
+            "tags": [
+              "internal"
+            ]
+          }
+        ]
+      },
+      {
         "name": "customers",
-        "datasource": "cloud_pg",
+        "datasource": "production_pg",
         "fields": [
           {
             "name": "id",
@@ -54,7 +94,7 @@
       },
       {
         "name": "orders",
-        "datasource": "cloud_pg",
+        "datasource": "production_pg",
         "fields": [
           {
             "name": "id",
@@ -140,7 +180,7 @@
       },
       {
         "name": "products",
-        "datasource": "cloud_pg",
+        "datasource": "production_pg",
         "fields": [
           {
             "name": "id",
@@ -187,131 +227,166 @@
     ],
     "datasources": [
       {
-        "name": "cloud_pg",
+        "name": "production_pg",
         "type": "postgres",
-        "config": {}
+        "config": {
+        }
       }
     ]
   },
   "policies": [
     {
-      "id": "admin_full_access",
-      "description": "Administrators have unrestricted access including raw PII.",
+      "id": "ai_mask_sensitive_for_agents",
+      "description": "Mask sensitive fields by default for agents.",
       "match": {
-        "context": {
-          "requester_role": "admin"
-        }
-      },
-      "action": "allow",
-      "reason": "Admin exemption from masking rules.",
-      "ttl_seconds": "4h"
-    },
-    {
-      "id": "deny_cross_region_access",
-      "description": "Block access when requester and dataset are in different regions.",
-      "match": {
-        "dataset": "customers",
-        "context": {
-          "dataset_region": "EU",
-          "requester_region": "US"
-        }
-      },
-      "action": "deny",
-      "reason": "Cross-region access is not allowed."
-    },
-    {
-      "id": "financial_requires_approval",
-      "description": "Access to financial data requires manual approval.",
-      "match": {
-        "dataset": "customers",
         "fields": {
-          "category": "financial"
+          "contains": [
+            "pii",
+            "financial",
+            "phi",
+            "secrets"
+          ]
         }
       },
       "when": {
-        "requester_role": "analyst",
+        "requester_role": "agent"
+      },
+      "action": "mask",
+      "reason": "Agents should not receive raw sensitive fields by default.",
+      "masking": {
+        "default_method": "full"
+      },
+      "ttl_seconds": "4h",
+      "priority": 1300
+    },
+    {
+      "id": "ai_require_approval_sensitive_prod",
+      "description": "Require approval when accessing sensitive fields in production.",
+      "match": {
+        "fields": {
+          "contains": [
+            "pii",
+            "financial",
+            "phi",
+            "secrets"
+          ]
+        }
+      },
+      "when": {
         "environment": "production"
       },
       "action": "require_approval",
-      "reason": "Financial data requires review before release.",
+      "reason": "Sensitive data access in production requires security review.",
       "approval": {
-        "approver_role": "finance_manager"
+        "approver_role": "security"
       },
-      "ttl_seconds": "1h"
+      "ttl_seconds": "1h",
+      "priority": 1200
     },
     {
-      "id": "hide_customers_dataset_from_analysts",
-      "description": "Hide customers dataset from analyst discovery in production.",
+      "id": "ai_deny_agent_prod_without_clearance",
+      "description": "Deny agent access in production unless requester_clearance is high/admin.",
       "match": {
-        "dataset": "customers",
-        "context": {
-          "requester_role": "analyst"
-        }
+      },
+      "when": {
+        "environment": "production",
+        "requester_role": "agent"
+      },
+      "action": "allow",
+      "reason": "Automation/agents in production require elevated clearance.",
+      "ttl_seconds": "1h",
+      "priority": 1100
+    },
+    {
+      "id": "block_cross_region",
+      "description": "Block cross-region access to prevent data residency violations.",
+      "match": {
+      },
+      "when": {
+        "requester_region": "US",
+        "dataset_region": "EU"
       },
       "action": "deny",
-      "reason": "Customers dataset is not discoverable by analysts.",
-      "ttl_seconds": "1h"
+      "reason": "Cross-region data access is not permitted.",
+      "priority": 95
     },
     {
-      "id": "hide_pii_fields_from_analysts",
-      "description": "Hide PII fields in customers dataset from analyst discovery.",
+      "id": "deny_sensitive_without_clearance",
+      "description": "Deny access to highly sensitive data without sufficient clearance.",
       "match": {
-        "dataset": "customers",
-        "context": {
-          "requester_role": "analyst"
-        },
         "fields": {
-          "sensitivity": "pii"
+          "sensitivity": "high"
         }
+      },
+      "when": {
+        "requester_clearance": "low"
       },
       "action": "deny",
-      "reason": "PII fields are not discoverable by analysts.",
-      "ttl_seconds": "1h"
+      "reason": "High sensitivity data requires elevated clearance.",
+      "priority": 90
     },
     {
-      "id": "mask_non_id_fields_for_support",
-      "description": "Support agents can view only IDs; all other fields must be masked.",
+      "id": "require_approval_high_sensitivity",
+      "description": "Require approval before accessing high sensitivity data.",
       "match": {
-        "dataset": "customers",
-        "context": {
-          "requester_role": "support"
+        "fields": {
+          "sensitivity": "high"
         }
       },
-      "action": "mask",
-      "reason": "Support role can only see customer identifiers.",
-      "ttl_seconds": "1h"
-    },
-    {
-      "id": "mask_pii_for_analysts",
-      "description": "Mask PII fields unless the requester is admin.",
-      "match": {
-        "dataset": "customers",
-        "context": {
-          "requester_role": "analyst"
-        },
-        "fields": {
-          "sensitivity": "pii"
-        }
-      },
-      "action": "mask",
-      "reason": "Analysts must not see raw personally identifiable information.",
-      "ttl_seconds": "1h"
-    },
-    {
-      "id": "require_approval_for_financial",
-      "description": "Financial fields require approval before access.",
-      "match": {
-        "dataset": "orders",
-        "fields": {
-          "category": "financial"
-        }
+      "when": {
+        "environment": "production"
       },
       "action": "require_approval",
-      "reason": "Access to financial data requires explicit approval.",
+      "reason": "High sensitivity data requires manual review in production.",
       "approval": {
-        "approver_role": "analyst"
+        "approver_role": "data_owner"
       },
-      "ttl_seconds": "1h"
+      "ttl_seconds": "1h",
+      "priority": 85
+    },
+    {
+      "id": "mask_pii_by_default",
+      "description": "Mask PII fields by default unless explicitly allowed.",
+      "match": {
+        "fields": {
+          "contains": [
+            "pii"
+          ]
+        }
+      },
+      "action": "mask",
+      "reason": "PII is masked by default for safety.",
+      "masking": {
+        "default_method": "full"
+      },
+      "ttl_seconds": "1h",
+      "priority": 80
+    },
+    {
+      "id": "limit_production_access",
+      "description": "Restrict production data access to approved roles.",
+      "match": {
+      },
+      "when": {
+        "environment": "production",
+        "requester_role": "analyst"
+      },
+      "action": "require_approval",
+      "reason": "Production access for analysts requires approval.",
+      "approval": {
+        "approver_role": "admin"
+      },
+      "ttl_seconds": "2h",
+      "priority": 70
+    },
+    {
+      "id": "default_ttl_for_allows",
+      "description": "Apply a default TTL to allow decisions.",
+      "match": {
+      },
+      "action": "allow",
+      "ttl_seconds": "4h",
+      "priority": 10
     }
   ],
   "signing": null

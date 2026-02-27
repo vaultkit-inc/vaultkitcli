@@ -80,11 +80,20 @@ module Vkit
             exit 0
 
           when "ok"
-            rows = result["rows"] || []
+            rows = result["rows"]
+            meta = result["meta"] || {}
+
+            unless rows.is_a?(Array)
+              raise "Invalid response: expected rows to be an array"
+            end
 
             puts "✅ OK — #{rows.size} rows"
-            puts "ℹ️  Query Metadata:"
-            puts JSON.pretty_generate(result["meta"] || {})
+
+            if meta.any?
+              puts "ℹ️  Query Metadata:"
+              puts JSON.pretty_generate(meta)
+            end
+
             puts
             puts "ℹ️  Data Rows:"
             Vkit::Core::TableFormatter.render(rows)

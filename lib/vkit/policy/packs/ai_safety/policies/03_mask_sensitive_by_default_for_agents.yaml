@@ -13,3 +13,6 @@ action:
   mask: true
   reason: "Agents should not receive raw sensitive fields by default."
   ttl: "4h"
+
+masking:
+  default_method: redact

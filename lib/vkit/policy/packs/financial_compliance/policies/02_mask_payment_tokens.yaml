@@ -11,4 +11,7 @@ context: {}
 action:
   mask: true
   reason: "Payment tokens/card-related data must never be exposed in raw form."
-  ttl: "24h"
+  ttl: 24h
+
+masking:
+  default_method: redact

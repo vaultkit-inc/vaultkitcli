@@ -104,7 +104,31 @@ module Vkit
 
       def self.extract_masking(p)
         return unless p.dig("action", "mask")
-        p["masking"]
+      
+        raw =
+          p["masking"] ||
+          p.dig("action", "masking") || {}
+      
+        default_method =
+          normalize_mask_method(raw["default_method"]) if raw["default_method"]
+      
+        rules =
+          case raw["rules"]
+          when Hash
+            raw["rules"].each_with_object({}) do |(field, method), acc|
+              acc[field.to_s] = normalize_mask_method(method)
+            end
+          else
+            {}
+          end
+      
+        result = {}
+        result["default_method"] = default_method if default_method
+        result["rules"] = rules if rules.any?
+      
+        return if result.empty?
+      
+        result
       end
 
       def self.normalize_registry(raw)
@@ -136,6 +160,16 @@ module Vkit
             "sensitivity" => meta["sensitivity"].to_s,
             "tags" => [meta["category"]].compact.map(&:to_s)
           }
+        end
+      end
+
+      def self.normalize_mask_method(method)
+        case method.to_s
+        when "redact"   then "full"
+        when "hash"     then "hash"
+        when "truncate" then "partial"
+        when "nullify"  then "full"
+        else "full"
         end
       end
 

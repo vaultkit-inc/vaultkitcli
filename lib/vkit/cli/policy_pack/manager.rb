@@ -10,7 +10,7 @@ module Vkit
     module PolicyPack
       class Manager
         # Packs shipped with CLI (in the gem)
-        PACKS_DIR = PACKS_DIR = File.expand_path("../../policy/packs", __dir__)
+        PACKS_DIR = File.expand_path("../../policy/packs", __dir__)
 
         # Project-local state
         STATE_DIR_NAME = ".vkit"

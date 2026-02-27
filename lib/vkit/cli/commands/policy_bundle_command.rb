@@ -67,22 +67,21 @@ module Vkit
         private
 
         def git_sha
-          `git rev-parse HEAD`.strip
-        rescue
+          out = `git rev-parse HEAD 2>/dev/null`.strip
+          return out unless out.empty?
+        
           Time.now.to_i.to_s
         end
-
+        
         def git_repo
-          `git config --get remote.origin.url`.strip
-        rescue
-          nil
+          out = `git config --get remote.origin.url 2>/dev/null`.strip
+          out.empty? ? nil : out
         end
-
+        
         def git_ref
-          `git rev-parse --abbrev-ref HEAD`.strip
-        rescue
-          nil
-        end
+          out = `git rev-parse --abbrev-ref HEAD 2>/dev/null`.strip
+          out.empty? ? nil : out
+        end        
       end
     end
   end

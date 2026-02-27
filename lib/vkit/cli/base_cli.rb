@@ -134,14 +134,17 @@ module Vkit
         option :username, required: true
         option :password, required: true
         option :config, required: true
-
+        option :region, required: true, desc: "EU | US | CA | APAC"
+        option :environment, required: true, desc: "production | staging | development | sandbox"
         def add
           Commands::DatasourceCommand.new.add(
             id: options[:id],
             engine: options[:engine],
             username: options[:username],
             password: options[:password],
-            config: options[:config]
+            config: options[:config],
+            region: options[:region],
+            environment: options[:environment]
           )
         end
 
@@ -166,13 +169,40 @@ module Vkit
         )
       end
 
+      # REGISTRY
+      desc "registry SUBCOMMAND ...ARGS", "Manage local registry.yaml"
+      subcommand "registry", Class.new(Thor) {
+
+        desc "export", "Export runtime registry to datasets/registry.yaml"
+        option :dir, type: :string, default: "."
+        option :out, type: :string, desc: "Custom output path"
+        option :force, type: :boolean, default: false
+        def export
+          Commands::RegistryExportCommand.new.call(
+            dir: options[:dir],
+            out: options[:out],
+            force: options[:force]
+          )
+        end
+
+        desc "diff", "Diff local registry.yaml against runtime registry"
+        option :dir, type: :string, default: "."
+        option :format, type: :string, default: "human", enum: %w[human json]
+        def diff
+          Commands::RegistryDiffCommand.new.call(
+            dir: options[:dir],
+            format: options[:format]
+          )
+        end
+      }
+
       # POLICY
       desc "policy SUBCOMMAND ...ARGS", "Manage policy bundles"
       subcommand "policy", Class.new(Thor) {
 
         desc "bundle", "Compile YAML policies into a JSON policy bundle"
         option :policies_dir, type: :string, default: "config/policies"
-        option :registry_dir, type: :string, default: "config"
+        option :registry_dir, type: :string, default: "datasets"
         option :out, type: :string, default: "dist/policy_bundle.json"
         option :org, type: :string
         option :version, type: :string
