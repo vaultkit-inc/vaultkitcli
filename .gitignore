@@ -43,3 +43,7 @@ keys/
 ._*
 
 *.gem
+.vkit/
+dist/
+datasets/
+config/policies/
