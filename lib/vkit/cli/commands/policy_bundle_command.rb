@@ -68,9 +68,9 @@ module Vkit
 
         def git_sha
           out = `git rev-parse HEAD 2>/dev/null`.strip
-          return out unless out.empty?
+          return nil if out.empty?
         
-          Time.now.to_i.to_s
+          out
         end
         
         def git_repo
