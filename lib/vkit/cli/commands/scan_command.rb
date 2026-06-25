@@ -11,34 +11,58 @@ module Vkit
             user = credential_store.user
             org  = user["organization_slug"]
 
-            puts "🔍 Running scan for datasource '#{datasource_name}' (mode=#{mode})..."
+            puts "🔍 Scanning #{datasource_name}..."
+            puts
 
             response = authenticated_client.post(
               "/api/v1/orgs/#{org}/datasources/#{datasource_name}/scan",
-              body: {
-                datasource: datasource_name,
-                mode: mode
-              }
+              body: { datasource: datasource_name, mode: mode }
             )
 
-            puts "✅ Scan completed"
-            puts "🆔 Scan ID: #{response["scan_id"]}"
-            puts "📌 Mode: #{response["mode"]}"
+            diff     = response["diff"] || {}
+            datasets = diff["datasets"] || []
+            changed  = datasets.select { |d| d["changes"].values.any?(&:any?) }
+            clean    = datasets.reject { |d| d["changes"].values.any?(&:any?) }
 
-            diff = response["diff"] || {}
-
-            if diff.empty?
-              puts "✨ No changes detected"
+            if changed.empty?
+              datasets.each { |d| puts "  #{d["name"].ljust(24)} ✓" }
+              puts
+              puts "  No changes detected"
             else
-              puts "📐 Registry diff:"
-              puts "─" * 50
-              puts JSON.pretty_generate(diff)
-              puts "─" * 50
+              changed.each do |dataset|
+                added    = dataset.dig("changes", "added_fields")   || []
+                removed  = dataset.dig("changes", "removed_fields") || []
+                modified = dataset.dig("changes", "changed_fields") || []
+
+                puts "  #{dataset["name"]}"
+
+                added.each do |f|
+                  name = f.is_a?(Hash) ? f["name"] : f
+                  type = f.is_a?(Hash) && f["type"] ? " (#{f["type"]})" : ""
+                  puts "    + #{name}#{type}  ⚠️  unclassified"
+                end
+
+                removed.each do |f|
+                  name = f.is_a?(Hash) ? f["name"] : f
+                  puts "    - #{name}"
+                end
+
+                modified.each do |f|
+                  name = f.is_a?(Hash) ? f["name"] : f
+                  puts "    ~ #{name}"
+                end
+
+                puts
+              end
+
+              clean.each { |d| puts "  #{d["name"].ljust(24)} ✓" }
+
+              puts
+              puts "  #{changed.size} changed · run with --apply to update baseline"
             end
 
-            if response.key?("applied")
-              puts response["applied"] ? "✅ Changes applied" : "ℹ️ Changes not applied"
-            end
+            puts
+            puts "  ✅ Applied" if response["applied"]
           end
         end
       end
