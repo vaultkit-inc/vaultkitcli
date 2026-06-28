@@ -7,6 +7,7 @@ match: {}
 context:
   environment: production
   requester_role: agent
+  requester_clearance: low
 
 action:
   deny: true
