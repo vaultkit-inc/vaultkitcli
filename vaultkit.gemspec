@@ -26,6 +26,7 @@ Gem::Specification.new do |spec|
   spec.bindir = "bin"
 
   spec.add_dependency "thor", "~> 1.2"
+  spec.add_dependency "json_schemer", "~> 2.3"
 
   spec.metadata["rubygems_mfa_required"] = "true"
   spec.metadata["source_code_uri"] = "https://github.com/ndbaba1/vaultkitcli"
