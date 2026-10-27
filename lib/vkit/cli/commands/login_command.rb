@@ -75,6 +75,10 @@ module Vkit
                 token: body["token"],
                 user: body["user"]
               }
+            when 403
+              # The browser sign-in was rejected (e.g. not invited, email not
+              # verified); the control plane returns the reason.
+              raise login_rejection_message(res)
             when 410
               raise "Login session expired"
             when 404
@@ -84,6 +88,13 @@ module Vkit
             end
           end
         end        
+
+        def login_rejection_message(res)
+          body = JSON.parse(res.body.to_s)
+          body["message"] || body["error"] || "Sign-in was rejected"
+        rescue JSON::ParserError
+          "Sign-in was rejected"
+        end
 
         def password_flow(client)
           email = @email || prompt("Email")
