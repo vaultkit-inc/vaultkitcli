@@ -2,6 +2,7 @@
 
 require "json"
 require "time"
+require_relative "approval_roles"
 
 module Vkit
   module CLI
@@ -99,6 +100,8 @@ module Vkit
             fields: a["fields"],
             requester: a["requester"],
             approver_role: a["approver_role"],
+            approver_roles: ApprovalRoles.required_roles(a),
+            outstanding_roles: ApprovalRoles.outstanding_roles(a),
             created_at: a["created_at"]
           }
         end
@@ -110,7 +113,10 @@ module Vkit
           puts "Dataset:   #{a["dataset"]}"
           puts "Fields:    #{Array(a["fields"]).join(", ")}"
           puts "Requester: #{a["requester"]}"
-          puts "Role Req:  #{a["approver_role"] || "any"}"
+          puts "Role Req:  #{ApprovalRoles.describe(ApprovalRoles.required_roles(a), fallback: "any")}"
+          if Array(a["approved_roles"]).any?
+            puts "Waiting:   #{ApprovalRoles.describe(ApprovalRoles.outstanding_roles(a))}"
+          end
           puts "Created:   #{format_time(a["created_at"])}"
           puts
           puts "▶ Approve: vkit approval approve #{a["id"]}"
