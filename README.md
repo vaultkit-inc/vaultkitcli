@@ -443,17 +443,19 @@ vkit approval:approve <REQUEST_ID> [--ttl SECONDS] [--notes "..."]
 ```
 
 **Options:**
-- `--ttl` — Grant lifetime in seconds (default: 3600)
+- `--ttl` — Grant lifetime in seconds. Defaults to the policy's TTL, which is also the maximum: a longer value is capped.
 - `--notes` — Approval notes (optional)
+
+When a request needs several approver roles, each role signs off separately. Until the last one has, `approve` prints the roles still waiting instead of a grant.
 
 **Examples:**
 ```bash
 # Basic approval
 vkit approval:approve 42
 
-# With custom TTL and notes
+# With a shorter TTL and notes
 vkit approval:approve 42 \
-  --ttl 7200 \
+  --ttl 1800 \
   --notes "Approved for Q4 analysis. Limited to aggregate data only."
 ```
 

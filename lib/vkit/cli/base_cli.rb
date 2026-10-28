@@ -71,7 +71,7 @@ module Vkit
       end
 
       desc "approval:approve ID", "Approve a pending request"
-      option :ttl, type: :numeric, default: 3600
+      option :ttl, type: :numeric, desc: "Grant lifetime in seconds (default and maximum: the policy's TTL)"
       define_method("approval:approve") do |id|
         Commands::ApprovalCommand.new.call_approve(
           id: id,
