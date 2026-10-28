@@ -3,6 +3,7 @@
 require "json"
 require "time"
 require_relative "../../core/table_formatter"
+require_relative "approval_roles"
 
 module Vkit
   module CLI
@@ -42,6 +43,18 @@ module Vkit
 
         private
 
+        def print_queued(result)
+          puts "⏳ QUEUED for approval"
+          puts "Request ID: #{result["request_id"]}"
+
+          roles = ApprovalRoles.required_roles(result)
+          puts "Approver roles: #{roles.join(', ')}" if roles.any?
+          puts "Reason: #{result["reason"]}" if result["reason"].to_s.strip != ""
+
+          puts
+          puts "Once it's approved, run the same request again to get the data."
+        end
+
         def handle_result(result, options)
           status = result["status"]
 
@@ -56,9 +69,10 @@ module Vkit
             puts "Reason: #{result["reason"]}"
             exit 2
 
-          when "queued"
-            puts "⏳ QUEUED for approval"
-            puts "Request ID: #{result["request_id"]}"
+          # The control plane answers "pending_approval"; "queued" is what
+          # older control planes sent.
+          when "pending_approval", "queued"
+            print_queued(result)
             exit 0
 
           when "granted"
