@@ -2,13 +2,15 @@ module Vkit
   module CLI
     module Commands
       class LogoutCommand < BaseCommand
+        # Always the saved login, even when VKIT_ENDPOINT/VKIT_TOKEN are set.
         def call
-          token = credential_store.token
+          saved = credential_store.stored_payload || {}
+          token = saved["token"]
 
           if token
             begin
               client = Vkit::Core::AuthClient.new(
-                base_url: credential_store.endpoint
+                base_url: saved["endpoint"]
               )
 
               client.logout(token)

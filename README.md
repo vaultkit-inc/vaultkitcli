@@ -200,6 +200,30 @@ Clear stored credentials and end session.
 vkit logout
 ```
 
+### Credentials from the environment
+
+`vkit` normally uses the login saved by `vkit login`, in your OS keychain or
+`~/.vkit/credentials.json`. Scripts, CI jobs and demos can supply credentials for
+a single command or shell instead, without replacing your saved login:
+
+```bash
+export VKIT_ENDPOINT=http://localhost:3300
+export VKIT_TOKEN=<a VaultKit user token>
+vkit request < query.json
+```
+
+- **Both variables are needed.** When both are set, they replace the saved login
+  for every command except `vkit login` and `vkit logout`, which always work on
+  the saved login.
+- **One alone is an error.** `vkit` stops and names the missing variable, rather
+  than mixing the environment with your saved login.
+- **A notice goes to stderr** once per command while the override is active.
+  The token is never printed.
+- **Unset both** (`unset VKIT_ENDPOINT VKIT_TOKEN`) to go back to your saved login.
+
+`vkit login --endpoint` still reads `VKIT_ENDPOINT` as its default endpoint when
+`VKIT_TOKEN` isn't set.
+
 ---
 
 ## 🔄 Core Workflows

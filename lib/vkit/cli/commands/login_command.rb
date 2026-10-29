@@ -21,7 +21,7 @@ module Vkit
           endpoint =
             @endpoint ||
             ENV["VKIT_ENDPOINT"] ||
-            credential_store.endpoint ||
+            credential_store.stored_payload&.dig("endpoint") ||
             prompt("VaultKit Control Plane URL")
           client = Vkit::Core::AuthClient.new(base_url: endpoint)
 
