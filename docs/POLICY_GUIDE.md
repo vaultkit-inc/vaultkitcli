@@ -10,8 +10,12 @@ how VaultKit handles a request. A policy has four parts:
 4. **action**: what VaultKit does when it matches
 
 Policies match fields by their labels in `datasets/registry.yaml`: each field's
-`sensitivity` (`high`, `medium` or `low`) and its `category`, which policies see
-as a tag. `vkit scan` suggests labels; review them before deploying.
+`sensitivity` (`high`, `medium`, `low` or `unknown`) and its `category`, which
+policies see as a tag. `vkit scan` suggests labels; review them before deploying.
+
+`unknown` means the scanner couldn't place a column that could hold anything,
+such as `payload` (jsonb) or `notes` (text). Give it a real label once you know
+what it holds. A rescan replaces an `unknown` label, but keeps labels you've set.
 
 `vkit policy bundle` rejects a policy that can never match, for example one that
 uses a tag no field can have.
@@ -28,7 +32,7 @@ priority: <integer>                # OPTIONAL: see "Which policy wins"
 match:                             # OPTIONAL: which data this policy applies to
   dataset: <dataset_name>          # a dataset in datasets/registry.yaml
   fields:                          # matches if ANY of these conditions holds
-    sensitivity: high | medium | low
+    sensitivity: high | medium | low | unknown
     contains: [<tag>, <tag>]       # a requested field has ANY of these tags
     any: [field1, field2]          # ANY of these fields is requested
     all: [field1, field2]          # required as well: ALL of these are requested
@@ -60,8 +64,8 @@ masking:                           # OPTIONAL, with mask
   default_method: full | partial | hash
 ```
 
-The tags the classifier assigns are `pii`, `financial`, `credential` and
-`internal`. You can use your own by setting `category` on fields in
+The tags the classifier assigns are `pii`, `financial`, `credential`,
+`internal` and `unknown`. You can use your own by setting `category` on fields in
 `datasets/registry.yaml`.
 
 ### Requester clearance and region
@@ -112,8 +116,8 @@ Packs are ready-made policies. `vkit init` installs `starter`; add others with
 
 | Pack | What it does |
 |---|---|
-| `starter` | Denies credentials. Masks personal data and high-sensitivity fields, also after approval. High-sensitivity data in production needs approval from `data_owner`. Other grants last 4 hours. |
-| `ai_safety` | Agents need approval from `security` for personal or financial data in production, and for high-sensitivity data in any environment. |
+| `starter` | Denies credentials. Masks personal data and high-sensitivity fields, also after approval. High-sensitivity data in production needs approval from `data_owner`. `unknown` columns are allowed but flagged: the decision records why, so they show up in the audit log. Other grants last 4 hours. |
+| `ai_safety` | Agents need approval from `security` for personal, financial or `unknown` data in production, and for high-sensitivity data in any environment. |
 | `financial_compliance` | Financial data in production needs approval from `finance_manager`, and grants with financial fields last 30 minutes. |
 
 Before relying on a pack:

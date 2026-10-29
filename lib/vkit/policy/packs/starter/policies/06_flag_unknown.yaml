@@ -1,0 +1,12 @@
+id: flag_unknown_sensitivity
+description: Allow columns nobody has reviewed yet, and record why, so they show up in the audit log.
+priority: 20
+
+match:
+  fields:
+    sensitivity: unknown
+
+action:
+  allow: true
+  reason: This column's sensitivity is unknown. Review its label in datasets/registry.yaml.
+  ttl: 1h

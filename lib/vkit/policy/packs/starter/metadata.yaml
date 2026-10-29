@@ -2,7 +2,7 @@ __pack_meta:
   name: starter
   version: "2.0.0"
   layer: 10
-  description: "Secure defaults: secrets denied, PII and high-sensitivity fields masked, approval for high-sensitivity data in production."
+  description: "Secure defaults: secrets denied, PII and high-sensitivity fields masked, approval for high-sensitivity data in production, unreviewed columns flagged."
   dependencies: []
   priority_band:
     min: 0

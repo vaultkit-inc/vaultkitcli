@@ -14,8 +14,9 @@ module Vkit
     class MatchCheck
       # Labels the scanner's classifier assigns. Always valid, so a pack can
       # cover secrets before a database has any.
-      CLASSIFIER_TAGS = %w[pii financial credential internal].freeze
-      SENSITIVITIES = %w[high medium low].freeze
+      # unknown marks a column nobody has reviewed yet.
+      CLASSIFIER_TAGS = %w[pii financial credential internal unknown].freeze
+      SENSITIVITIES = %w[high medium low unknown].freeze
 
       MATCH_KEYS = %w[dataset fields context].freeze
       FIELD_KEYS = %w[any all contains sensitivity].freeze

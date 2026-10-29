@@ -2,7 +2,7 @@ __pack_meta:
   name: ai_safety
   version: "2.0.0"
   layer: 30
-  description: "Agents need approval for personal and financial data in production, and for high-sensitivity data anywhere."
+  description: "Agents need approval for personal, financial and unreviewed data in production, and for high-sensitivity data anywhere."
   dependencies:
     - starter
   priority_band:

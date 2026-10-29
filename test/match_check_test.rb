@@ -29,7 +29,11 @@ class MatchCheckTest < Minitest::Test
   end
 
   def test_accepts_classifier_tags_and_registry_tags
-    assert_empty check("match" => { "fields" => { "contains" => %w[credential pii marketing] } }).errors
+    assert_empty check("match" => { "fields" => { "contains" => %w[credential pii marketing unknown] } }).errors
+  end
+
+  def test_accepts_the_unknown_sensitivity_before_any_column_has_it
+    assert_empty check("match" => { "fields" => { "sensitivity" => "unknown" } }).errors
   end
 
   def test_rejects_tags_no_field_can_have
