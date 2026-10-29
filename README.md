@@ -221,6 +221,14 @@ vkit request < query.json
   The token is never printed.
 - **Unset both** (`unset VKIT_ENDPOINT VKIT_TOKEN`) to go back to your saved login.
 
+To act as someone else for one command, override the token on that command only.
+For example, a reviewer approving a request from the same shell:
+
+```bash
+VKIT_TOKEN="$APPROVER_TOKEN" vkit approval:list
+VKIT_TOKEN="$APPROVER_TOKEN" vkit approval:approve 42
+```
+
 `vkit login --endpoint` still reads `VKIT_ENDPOINT` as its default endpoint when
 `VKIT_TOKEN` isn't set.
 
