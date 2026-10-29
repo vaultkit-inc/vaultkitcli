@@ -701,6 +701,25 @@ vkit scan production_pg
 # Summary: 2 new datasets, 3 new fields, 1 modified field
 ```
 
+**Classifier Suggestions:**
+
+A rescan keeps the labels people reviewed (from a deployed bundle or a manual edit). When the classifier disagrees with one of them, the scan lists it as a suggestion under its dataset, marked `?`. Suggestions are not changes: they don't count toward the changed total, and applying the scan leaves them alone.
+
+```bash
+vkit scan production_pg
+
+# Output:
+#   settings                 ✓
+#     ? key_value  low/internal → high/credential (suggested)
+#
+#   No changes detected
+#
+#   ? = classifier suggestion, not applied. To accept one, edit
+#     datasets/registry.yaml and redeploy the bundle.
+```
+
+To accept a suggestion, change the field's sensitivity and tags in `datasets/registry.yaml`, then build and deploy the bundle. Control planes that predate suggestions don't send them, and the output is unchanged.
+
 **Apply Changes:**
 ```bash
 vkit scan production_pg --mode apply
