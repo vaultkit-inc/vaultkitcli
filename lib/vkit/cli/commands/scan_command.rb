@@ -19,51 +19,88 @@ module Vkit
               body: { datasource: datasource_name, mode: mode }
             )
 
-            diff     = response["diff"] || {}
-            datasets = diff["datasets"] || []
-            changed  = datasets.select { |d| d["changes"].values.any?(&:any?) }
-            clean    = datasets.reject { |d| d["changes"].values.any?(&:any?) }
+            print_diff(response)
+          end
+        end
 
-            if changed.empty?
-              datasets.each { |d| puts "  #{d["name"].ljust(24)} ✓" }
-              puts
-              puts "  No changes detected"
-            else
-              changed.each do |dataset|
-                added    = dataset.dig("changes", "added_fields")   || []
-                removed  = dataset.dig("changes", "removed_fields") || []
-                modified = dataset.dig("changes", "changed_fields") || []
+        private
 
-                puts "  #{dataset["name"]}"
+        def print_diff(response)
+          diff     = response["diff"] || {}
+          datasets = diff["datasets"] || []
+          changed  = datasets.select { |d| d["changes"].values.any?(&:any?) }
+          clean    = datasets.reject { |d| d["changes"].values.any?(&:any?) }
 
-                added.each do |f|
-                  name = f.is_a?(Hash) ? f["name"] : f
-                  type = f.is_a?(Hash) && f["type"] ? " (#{f["type"]})" : ""
-                  puts "    + #{name}#{type}  ⚠️  unclassified"
-                end
+          if changed.empty?
+            datasets.each { |d| print_clean(d) }
+            puts
+            puts "  No changes detected"
+          else
+            changed.each do |dataset|
+              added    = dataset.dig("changes", "added_fields")   || []
+              removed  = dataset.dig("changes", "removed_fields") || []
+              modified = dataset.dig("changes", "changed_fields") || []
 
-                removed.each do |f|
-                  name = f.is_a?(Hash) ? f["name"] : f
-                  puts "    - #{name}"
-                end
+              puts "  #{dataset["name"]}"
 
-                modified.each do |f|
-                  name = f.is_a?(Hash) ? f["name"] : f
-                  puts "    ~ #{name}"
-                end
-
-                puts
+              added.each do |f|
+                name = f.is_a?(Hash) ? f["name"] : f
+                type = f.is_a?(Hash) && f["type"] ? " (#{f["type"]})" : ""
+                puts "    + #{name}#{type}  ⚠️  unclassified"
               end
 
-              clean.each { |d| puts "  #{d["name"].ljust(24)} ✓" }
+              removed.each do |f|
+                name = f.is_a?(Hash) ? f["name"] : f
+                puts "    - #{name}"
+              end
+
+              modified.each do |f|
+                name = f.is_a?(Hash) ? f["name"] : f
+                puts "    ~ #{name}"
+              end
+
+              print_suggestions(dataset)
 
               puts
-              puts "  #{changed.size} changed · run with --apply to update baseline"
             end
 
+            clean.each { |d| print_clean(d) }
+
             puts
-            puts "  ✅ Applied" if response["applied"]
+            puts "  #{changed.size} changed · run with --apply to update baseline"
           end
+
+          # Suggestions are reviewed labels the classifier now disagrees with.
+          # Older control planes don't send them; applying a scan never changes them.
+          if datasets.any? { |d| suggestions_for(d).any? }
+            puts
+            puts "  ? = classifier suggestion, not applied. To accept one, edit"
+            puts "    datasets/registry.yaml and redeploy the bundle."
+          end
+
+          puts
+          puts "  ✅ Applied" if response["applied"]
+        end
+
+        def print_clean(dataset)
+          puts "  #{dataset["name"].ljust(24)} ✓"
+          print_suggestions(dataset)
+        end
+
+        def print_suggestions(dataset)
+          suggestions_for(dataset).each do |s|
+            puts "    ? #{s["name"]}  #{label(s["current"])} → #{label(s["suggested"])} (suggested)"
+          end
+        end
+
+        def suggestions_for(dataset)
+          dataset["suggestions"] || []
+        end
+
+        def label(classification)
+          classification ||= {}
+          tags = Array(classification["tags"])
+          [classification["sensitivity"], *(tags.join(",") unless tags.empty?)].compact.join("/")
         end
       end
     end
