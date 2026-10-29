@@ -44,7 +44,7 @@ class ScanCommandDiffTest < Minitest::Test
     assert added_at, out
     assert suggested_at, out
     assert_operator added_at, :<, suggested_at
-    assert_includes out, "1 changed · run with --apply"
+    assert_includes out, "1 changed · run with --mode apply"
     assert_includes out, "datasets/registry.yaml and redeploy the bundle."
   end
 
@@ -60,7 +60,7 @@ class ScanCommandDiffTest < Minitest::Test
 
     assert_includes out, "- legacy_id"
     assert_includes out, "customers"
-    assert_includes out, "1 changed · run with --apply"
+    assert_includes out, "1 changed · run with --mode apply"
     refute_includes out, "?"
     refute_includes out, "registry.yaml"
   end

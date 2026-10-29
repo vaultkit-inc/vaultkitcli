@@ -232,6 +232,17 @@ VKIT_TOKEN="$APPROVER_TOKEN" vkit approval:approve 42
 `vkit login --endpoint` still reads `VKIT_ENDPOINT` as its default endpoint when
 `VKIT_TOKEN` isn't set.
 
+### TLS certificates
+
+`vkit` checks the control plane's TLS certificate against your system's trusted
+certificates on every HTTPS call, including `vkit login`. If your control plane
+uses a self-signed or private-CA certificate, trust it by pointing
+`SSL_CERT_FILE` at a PEM bundle that includes it:
+
+```bash
+export SSL_CERT_FILE=/path/to/ca-bundle.pem
+```
+
 ---
 
 ## 🔄 Core Workflows
@@ -1174,7 +1185,7 @@ bundle exec rubocop -a
 
 ## 📚 Additional Resources
 
-- **Main Repository**: [github.com/ndbaba1/vaultkitcli.git](https://github.com/ndbaba1/vaultkitcli.git)
+- **Main Repository**: [github.com/vaultkit-inc/vaultkitcli](https://github.com/vaultkit-inc/vaultkitcli)
 - **Documentation**: [docs.vaultkit.io](https://docs.vaultkit.io)
 - **AQL Specification**: [docs.vaultkit.io/aql](https://docs.vaultkit.io/aql)
 - **Policy Reference**: [docs.vaultkit.io/policies](https://docs.vaultkit.io/policies)

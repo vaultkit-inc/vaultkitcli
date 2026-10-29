@@ -17,7 +17,9 @@ module Vkit
             if pack_name
               [upgrade_single(manager, pack_name, force)]
             else
-              manager.upgrade_all!(force: force)
+              manager.upgrade_all!(force: force).map do |name, result|
+                summarize(name, result)
+              end
             end
 
           print_summary(results)
@@ -31,8 +33,12 @@ module Vkit
         private
 
         def upgrade_single(manager, pack, force)
-          result = manager.upgrade!(pack, force: force)
+          summarize(pack, manager.upgrade!(pack, force: force))
+        rescue => e
+          { name: pack, status: :failed, error: e.message }
+        end
 
+        def summarize(pack, result)
           if result == :up_to_date
             { name: pack, status: :up_to_date }
           else
@@ -44,8 +50,6 @@ module Vkit
               policies: result[:policies]
             }
           end
-        rescue => e
-          { name: pack, status: :failed, error: e.message }
         end
 
         def print_summary(results)

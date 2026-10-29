@@ -14,25 +14,16 @@ module Vkit
             user = credential_store.user
             org  = user["organization_slug"]
 
-            response =
-              authenticated_client.get(
-                "/api/v1/orgs/#{org}/agent_tokens",
-                params: build_query(options)
-              )
+            response = authenticated_client.get("/api/v1/orgs/#{org}/agent_tokens")
 
             tokens = response["tokens"] || []
+            tokens = tokens.select { |t| t["name"] == options[:agent] } if options[:agent]
 
             print_result(tokens, format)
           end
         end
 
         private
-
-        def build_query(options)
-          {}.tap do |q|
-            q[:name] = options[:agent] if options[:agent]
-          end
-        end
 
         def print_result(tokens, format)
           if tokens.empty?

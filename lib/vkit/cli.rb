@@ -7,7 +7,7 @@ require_relative "cli/base_cli"
 module Vkit
   module CLI
     def self.start(argv = ARGV)
-      if argv.include?("--version") || argv.include?("-v")
+      if %w[--version -v].include?(argv.first)
         puts "vkit #{Vkit::VERSION}"
         exit 0
       end

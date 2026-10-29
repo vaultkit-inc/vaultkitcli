@@ -67,7 +67,7 @@ module Vkit
             clean.each { |d| print_clean(d) }
 
             puts
-            puts "  #{changed.size} changed · run with --apply to update baseline"
+            puts "  #{changed.size} changed · run with --mode apply to update baseline"
           end
 
           # Suggestions are reviewed labels the classifier now disagrees with.
