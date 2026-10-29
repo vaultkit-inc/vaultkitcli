@@ -26,6 +26,9 @@ module Vkit
 
             puts "🧠 Name:       #{token["name"]}"
             puts "🎭 Role:       #{token["role"]}"
+            puts "🏢 Tenant:     #{token["tenant"]}" if token["tenant"]
+            puts "🛡  Clearance:  #{token["clearance"]}" if token["clearance"]
+            puts "🌍 Region:     #{token["region"]}" if token["region"]
             puts "🆔 Token ID:   #{token["id"]}"
             puts "🏷  Prefix:     #{token["prefix"]}"
             puts "⏳ Expires At: #{token["expires_at"] || "never"}"
@@ -47,7 +50,10 @@ module Vkit
           body = {
             name: options.fetch(:name),
             role: options[:role],
-          }
+            tenant: options[:tenant],
+            clearance: options[:clearance],
+            region: options[:region]
+          }.compact
 
           if options[:expires_in]
             body[:expires_at] = parse_expires_in(options[:expires_in]).iso8601

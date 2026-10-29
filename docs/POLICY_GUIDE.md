@@ -87,6 +87,42 @@ Requires a control plane with admin-set clearance and region.
 
 ---
 
+## Tenant-scoped datasets
+
+When your customers' rows share tables, keyed by a column like
+`organization_id`, mark those datasets in `datasets/registry.yaml`:
+
+```yaml
+tickets:
+  datasource: app
+  tenant_column: organization_id
+  fields:
+    organization_id: { type: uuid, sensitivity: low, category: internal }
+```
+
+Then issue each agent session a token for one tenant:
+
+```bash
+vkit agents tokens create --name support-assistant --tenant org_42 --expires-in 1h
+```
+
+Every query that reads a tenant-scoped dataset, as its source or through a
+join, is confined to the token's tenant. VaultKit adds
+`organization_id = 'org_42'` to the query, ANDed with the agent's own filters,
+so the agent can't ask for another tenant, leave the tenant out, or widen past it
+with `OR`. Grants, approvals and grant reuse are bound to the tenant, and every
+request records it in the audit log.
+
+- **Fails closed.** A requester without a tenant, including every user, is
+  denied on tenant-scoped datasets.
+- **Set by an admin.** The tenant is fixed when the token is issued; requests
+  can't change it. A short-lived token per customer session keeps it tight.
+- **Unmarked tenant tables are an error.** `vkit policy bundle` refuses a dataset
+  that has another dataset's tenant column but no `tenant_column`. Mark it, or set
+  `tenant_column: false` for a table every tenant may read (for example a plans
+  catalogue).
+- **Shared tables only.** A schema or database per tenant isn't supported yet.
+
 ## Which policy wins
 
 When several policies match, the strongest action wins, whatever their priority:
