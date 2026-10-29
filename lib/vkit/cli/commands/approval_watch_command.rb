@@ -119,8 +119,8 @@ module Vkit
           end
           puts "Created:   #{format_time(a["created_at"])}"
           puts
-          puts "▶ Approve: vkit approval approve #{a["id"]}"
-          puts "▶ Deny:    vkit approval deny #{a["id"]} --reason \"…\""
+          puts "▶ Approve: vkit approval:approve #{a["id"]}"
+          puts "▶ Deny:    vkit approval:deny #{a["id"]} --reason \"…\""
           puts
         end
 

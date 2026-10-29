@@ -317,7 +317,8 @@ module Vkit
         subcommand "tokens", Class.new(Thor) {
 
           # agents tokens list
-          desc "list", "List tokens for an agent"
+          desc "list", "List agent tokens"
+          option :agent, type: :string, desc: "Only show tokens with this agent name"
           option :format, type: :string, default: "table", enum: %w[table json]
           def list
             Commands::AgentTokensListCommand.new.call(

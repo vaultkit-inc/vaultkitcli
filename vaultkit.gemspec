@@ -29,5 +29,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "json_schemer", "~> 2.3"
 
   spec.metadata["rubygems_mfa_required"] = "true"
-  spec.metadata["source_code_uri"] = "https://github.com/ndbaba1/vaultkitcli"
+  spec.metadata["source_code_uri"] = "https://github.com/vaultkit-inc/vaultkitcli"
 end

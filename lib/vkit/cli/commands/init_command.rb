@@ -43,7 +43,7 @@ module Vkit
 
           puts "\nNext steps:"
           puts "  1. Review policies in config/policies/"
-          puts "  2. Run: vkit scan <datasource> --apply"
+          puts "  2. Run: vkit scan <datasource> --mode apply"
           puts "  3. Run: vkit policy bundle"
           puts "  4. Run: vkit policy deploy"
 
@@ -71,7 +71,7 @@ module Vkit
                 # VaultKit Dataset Registry
                 #
                 # Populate with:
-                #   vkit scan <datasource> --apply
+                #   vkit scan <datasource> --mode apply
                 #   vkit registry export
                 #
               YAML

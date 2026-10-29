@@ -90,11 +90,7 @@ module Vkit
       end
 
       def http_request(uri, req, allow_non_200: false)
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == "https"
-        http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-
-        res = http.request(req)
+        res = build_http(uri).request(req)
 
         return res if allow_non_200
 
@@ -103,6 +99,14 @@ module Vkit
         end
 
         res
+      end
+
+      # Certificates are verified against the system trust store. Point
+      # SSL_CERT_FILE at a bundle to trust a self-signed control plane.
+      def build_http(uri)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+        http
       end
 
       def parse_json(res)
