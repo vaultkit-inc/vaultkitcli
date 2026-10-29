@@ -1,0 +1,15 @@
+id: mask_high_sensitivity
+description: Mask high-sensitivity fields, such as bank accounts, even when they aren't personal data.
+priority: 82
+
+match:
+  fields:
+    sensitivity: high
+
+action:
+  mask: true
+  reason: High-sensitivity data is masked by default.
+  ttl: 1h
+
+masking:
+  default_method: full

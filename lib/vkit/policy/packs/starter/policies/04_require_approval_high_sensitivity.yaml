@@ -1,0 +1,16 @@
+id: require_approval_high_sensitivity
+description: A data owner approves requests for high-sensitivity data in production.
+priority: 85
+
+match:
+  fields:
+    sensitivity: high
+
+context:
+  environment: production
+
+action:
+  require_approval: true
+  approver_role: data_owner
+  reason: High-sensitivity data in production needs a data owner's approval.
+  ttl: 1h

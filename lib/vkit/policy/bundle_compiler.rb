@@ -3,15 +3,19 @@ require "yaml"
 require "digest"
 require "time"
 require_relative "policy_validator"
+require_relative "match_check"
+require_relative "validation_error"
 
 module Vkit
   module Policy
     class BundleCompiler
       FORMAT_VERSION = "v1"
 
+      # Raises if a policy can never match (see MatchCheck).
       def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {})
         policies = load_policies(policies_dir)
         registry = load_registry(registry_dir)
+        check_matches!(policies, registry)
 
         bundle = {
           "bundle" => {
@@ -47,6 +51,20 @@ module Vkit
 
           data.merge("__file" => File.basename(f))
         end
+      end
+
+      def self.check_matches!(policies, registry)
+        result = MatchCheck.call(policies, registry)
+        return if result.errors.empty?
+
+        raise ValidationError, <<~MSG
+          These policies can never match, so they would never protect anything:
+
+          #{result.errors.map { |e| "  - #{e}" }.join("\n")}
+
+          Fix or remove them. If they came from a policy pack, `vkit policy pack upgrade` installs
+          versions that can match.
+        MSG
       end
 
       def self.load_registry(dir)

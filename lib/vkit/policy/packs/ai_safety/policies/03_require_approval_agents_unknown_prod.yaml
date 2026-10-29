@@ -1,0 +1,17 @@
+id: ai_require_approval_agents_unknown_prod
+description: Agents need security approval in production for columns nobody has reviewed yet.
+priority: 1400
+
+match:
+  fields:
+    sensitivity: unknown
+
+context:
+  environment: production
+  requester_role: agent
+
+action:
+  require_approval: true
+  approver_role: security
+  reason: This column's sensitivity is unknown, so an agent needs security review to read it in production.
+  ttl: 1h
