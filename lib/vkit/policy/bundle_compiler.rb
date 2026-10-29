@@ -58,8 +58,10 @@ module Vkit
       end
 
       # Normalization
+      # Unknown values (a repo with no origin remote) are left out: the
+      # bundle schema requires strings where they are present.
       def self.normalize_source(source)
-        { "type" => "git" }.merge(source.transform_keys(&:to_s))
+        { "type" => "git" }.merge(source.transform_keys(&:to_s).compact)
       end
 
       def self.normalize_policies(policies)
@@ -163,12 +165,12 @@ module Vkit
         end
       end
 
+      # The control plane's methods (full, partial, hash) pass through; the
+      # older names map onto them. Anything else masks fully.
       def self.normalize_mask_method(method)
         case method.to_s
-        when "redact"   then "full"
-        when "hash"     then "hash"
+        when "full", "partial", "hash" then method.to_s
         when "truncate" then "partial"
-        when "nullify"  then "full"
         else "full"
         end
       end
