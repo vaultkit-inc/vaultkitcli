@@ -1,0 +1,9 @@
+id: default_ttl_for_allows
+description: Grants for allowed requests last four hours.
+priority: 10
+
+match: {}
+
+action:
+  allow: true
+  ttl: 4h

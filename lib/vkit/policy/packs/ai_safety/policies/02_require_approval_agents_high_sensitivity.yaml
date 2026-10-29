@@ -1,0 +1,16 @@
+id: ai_require_approval_agents_high_sensitivity
+description: Agents need security approval for high-sensitivity data in every environment.
+priority: 1300
+
+match:
+  fields:
+    sensitivity: high
+
+context:
+  requester_role: agent
+
+action:
+  require_approval: true
+  approver_role: security
+  reason: Agents reading high-sensitivity data need security review, in any environment.
+  ttl: 1h

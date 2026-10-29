@@ -2,95 +2,146 @@
 
 ## Overview
 Each policy file in `config/policies/*.yaml` defines **one** rule that governs
-how VaultKit handles access to a specific dataset under specific conditions.
+how VaultKit handles a request. A policy has four parts:
 
-A policy contains four major sections:
+1. **id**: unique policy identifier
+2. **description**: human-readable explanation
+3. **match** and **context**: which requests it applies to
+4. **action**: what VaultKit does when it matches
 
-1. **id** — unique policy identifier  
-2. **description** — human-readable explanation  
-3. **match** — what data + contexts trigger this policy  
-4. **action** — what VaultKit should do when it matches  
+Policies match fields by their labels in `datasets/registry.yaml`: each field's
+`sensitivity` (`high`, `medium` or `low`) and its `category`, which policies see
+as a tag. `vkit scan` suggests labels; review them before deploying.
 
-Below is the full reference schema.
+`vkit policy bundle` rejects a policy that can never match, for example one that
+uses a tag no field can have, and warns about one that matches on something the
+requester supplies.
 
 ---
 
 ## VaultKit Policy Schema (YAML)
 
 ```yaml
-id: <string>                       # REQUIRED — unique policy ID
-description: <string>              # REQUIRED — clear explanation of rule
+id: <string>                       # REQUIRED: unique policy ID
+description: <string>              # REQUIRED: clear explanation of the rule
+priority: <integer>                # OPTIONAL: see "Which policy wins"
 
-match:                             # OPTIONAL — define when this policy applies
-  dataset: <dataset_name>          # e.g., customers, orders, payments
-  fields:                          # OPTIONAL — field-level sensitivity logic
-    sensitivity: <tag>             # e.g., pii, financial, internal, secret
-    contains: [<tag>, <tag>]       # triggers if query includes all listed tags
-    any: [field1, field2]          # triggers if ANY of these fields appear
-    all: [field1, field2]          # triggers only if ALL appear
+match:                             # OPTIONAL: which data this policy applies to
+  dataset: <dataset_name>          # a dataset in datasets/registry.yaml
+  fields:                          # matches if ANY of these conditions holds
+    sensitivity: high | medium | low
+    contains: [<tag>, <tag>]       # a requested field has ANY of these tags
+    any: [field1, field2]          # ANY of these fields is requested
+    all: [field1, field2]          # required as well: ALL of these are requested
 
-  context:                         # OPTIONAL — identity + environment constraints
-    requester_role: <role>         # e.g., analyst, engineer, admin
-    requester_clearance: <string>  # e.g., low, high, confidential
-    requester_region: <region>     # e.g., US, EU, CA
-    dataset_region: <region>       # e.g., US, EU
-    environment: <env>             # production | staging | dev
-
-    time:                          # OPTIONAL — time window constraint
-      after:  "HH:MM"              # 24h local to timezone
+  context:                         # OPTIONAL: like `context` below, plus time
+    time:
+      after:  "HH:MM"
       before: "HH:MM"
-      timezone: "America/New_York" # OPTIONAL (defaults to UTC)
 
-action:                            # REQUIRED — outcome VaultKit enforces
-  deny: true | false               # Access fully blocked
+context:                           # OPTIONAL: who is asking, and where
+  environment: production | staging | development | sandbox   # the datasource's
+  dataset_region: EU | US | CA | APAC                           # the datasource's
+  requester_role: <role>           # admin, member, approver, an approval group,
+                                   # or agent (the default for agent tokens)
 
-  require_approval: true | false   # Place request in approval queue
-  approver_role: <role>            # Required if require_approval == true
+action:                            # REQUIRED: exactly one of these is true
+  deny: true
+  require_approval: true
+  mask: true
+  allow: true
 
-  mask: true | false               # Apply field masking (uses registry metadata)
-  mask_strategy: strict | soft     # OPTIONAL: advanced masking modes
+  approver_role: <group>           # REQUIRED with require_approval
+  reason: <string>                 # REQUIRED with deny and require_approval
+  ttl: "1h"                        # OPTIONAL: how long the grant lasts
 
-  allow: true | false              # Explicit allow (if no higher-priority rule)
-
-  ttl: "1h"                        # OPTIONAL — grant duration (applies for allow/mask)
-  reason: <string>                 # REQUIRED for deny / require_approval
+masking:                           # OPTIONAL, with mask
+  default_method: full | partial | hash
 ```
+
+The tags the classifier assigns are `pii`, `financial`, `credential` and
+`internal`. You can use your own by setting `category` on fields in
+`datasets/registry.yaml`.
+
+### Context VaultKit can't enforce yet
+
+- `requester_clearance`: VaultKit doesn't record a clearance for users or agent
+  tokens, so a policy using it never matches. `vkit policy bundle` rejects it.
+- `requester_region`: users have no region, so the value comes from the request
+  itself, and a requester can leave it out. `vkit policy bundle` warns about it;
+  don't rely on it for data residency. `dataset_region` comes from the datasource
+  and is safe to use.
 
 ---
 
-## Priority Rules
-When multiple policies match, VaultKit resolves using the following priority:
+## Which policy wins
 
-| Priority | Action             |
+When several policies match, the strongest action wins, whatever their priority:
+
+| Strength | Action             |
 |---------|--------------------|
 | 3       | deny               |
 | 2       | require_approval   |
 | 1       | mask               |
 | 0       | allow              |
 
-So a `deny` rule always overrides all other matched policies.
+When several approval policies match, every one of their approver groups must
+sign off, and the shortest TTL applies. Masking from every matching mask policy
+is combined. With no matching policy, a request is allowed.
+
+After an approval, each field is checked again on its own, without the
+requester's context, and a field is masked if the strongest policy that still
+matches is a mask. So a mask policy with no `context` keeps a field masked after
+approval, unless an approval or deny policy with no `context` also matches it.
+The packs give their approval policies a context for this reason.
 
 ---
 
-## Example Minimal Template
+## Policy packs
+
+Packs are ready-made policies. `vkit init` installs `starter`; add others with
+`vkit policy pack add <name>`, and update with `vkit policy pack upgrade`.
+
+| Pack | What it does |
+|---|---|
+| `starter` | Denies credentials. Masks personal data and high-sensitivity fields, also after approval. High-sensitivity data in production needs approval from `data_owner`. Other grants last 4 hours. |
+| `ai_safety` | Agents need approval from `security` for personal or financial data in production, and for high-sensitivity data in any environment. |
+| `financial_compliance` | Financial data in production needs approval from `finance_manager`, and grants with financial fields last 30 minutes. |
+
+Before relying on a pack:
+
+- **Create its approval groups** (`data_owner`, `security`, `finance_manager`) and
+  add people to them. Until then, only admins can approve.
+- **Review the registry labels.** The packs act on them, and a field labelled
+  `low` that holds personal data isn't protected.
+- **Agents match `requester_role: agent`,** the default role for agent tokens.
+  Tokens created with another role don't.
+
+---
+
+## Example
 
 ```yaml
-id: example_policy
-description: "Example showing every top-level field."
+id: mask_customer_contact_in_business_hours
+description: "Customer contact details are masked during business hours."
 
 match:
   dataset: customers
   fields:
-    sensitivity: pii
+    any: [email, phone]
   context:
-    requester_role: analyst
-    environment: production
     time:
       after: "09:00"
       before: "17:00"
 
+context:
+  environment: production
+
 action:
   mask: true
-  reason: "PII is masked for analysts during business hours."
+  reason: "Contact details are masked during business hours."
   ttl: "1h"
+
+masking:
+  default_method: partial
 ```

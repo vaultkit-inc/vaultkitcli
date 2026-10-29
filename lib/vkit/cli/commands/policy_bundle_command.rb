@@ -38,6 +38,7 @@ module Vkit
 
             org_slug = org || derived_org
 
+            warnings = []
             bundle = Vkit::Policy::BundleCompiler.compile!(
               org_slug: org_slug,
               bundle_version: version,
@@ -47,8 +48,10 @@ module Vkit
                 repo: git_repo,
                 ref: git_ref,
                 commit_sha: version
-              }
+              },
+              warnings: warnings
             )
+            warnings.each { |w| warn "⚠️  #{w}" }
 
             FileUtils.mkdir_p(File.dirname(out))
             File.write(out, JSON.pretty_generate(bundle))

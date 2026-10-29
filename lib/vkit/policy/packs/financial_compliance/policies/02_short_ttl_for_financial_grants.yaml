@@ -1,0 +1,12 @@
+id: fin_short_ttl_financial
+description: Grants that include financial fields expire after 30 minutes.
+priority: 2400
+
+match:
+  fields:
+    contains: [financial]
+
+action:
+  allow: true
+  reason: Financial grants expire quickly.
+  ttl: 30m

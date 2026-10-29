@@ -1,0 +1,16 @@
+id: fin_require_approval_financial_prod
+description: A finance manager approves requests for financial data in production.
+priority: 2100
+
+match:
+  fields:
+    contains: [financial]
+
+context:
+  environment: production
+
+action:
+  require_approval: true
+  approver_role: finance_manager
+  reason: Financial data in production needs finance approval.
+  ttl: 30m
