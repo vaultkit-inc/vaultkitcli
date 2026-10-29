@@ -4,14 +4,13 @@ require "set"
 
 module Vkit
   module Policy
-    # Finds policies that can never match, or that match on something the
-    # requester controls, by checking them against the registry being
-    # bundled and against what the control plane actually evaluates.
-    #
-    # A policy is a dead end when it uses a key the engine ignores, a tag or
-    # sensitivity no field can have, a dataset that isn't in the registry, or
-    # context VaultKit never sets. Those are errors. Context the requester
-    # supplies themselves is a warning: it matches, but proves nothing.
+    # Finds policies that can never match, by checking them against the
+    # registry being bundled and against what the control plane evaluates:
+    # a key the engine ignores, a tag or sensitivity no field can have, a
+    # dataset that isn't in the registry, or a context value VaultKit never
+    # sets. Requester clearance and region are set by admins on users and
+    # agent tokens (vaultkit-inc/vaultkit#76), so they're checked like any
+    # other value.
     class MatchCheck
       # Labels the scanner's classifier assigns. Always valid, so a pack can
       # cover secrets before a database has any.
@@ -23,8 +22,9 @@ module Vkit
       CONTEXT_KEYS = %w[environment dataset_region requester_role requester_region requester_clearance time].freeze
       ENVIRONMENTS = %w[production staging development sandbox].freeze
       REGIONS = %w[EU US CA APAC].freeze
+      CLEARANCES = %w[low medium high].freeze
 
-      Result = Struct.new(:errors, :warnings, keyword_init: true)
+      Result = Struct.new(:errors, keyword_init: true)
 
       def self.call(policies, registry)
         new(registry).call(policies)
@@ -39,13 +39,11 @@ module Vkit
 
       def call(policies)
         errors = []
-        warnings = []
         policies.each do |policy|
           where = "#{policy['__file'] || policy['id']} (#{policy['id']})"
           problems(policy).each { |p| errors << "#{where}: #{p}" }
-          cautions(policy).each { |c| warnings << "#{where}: #{c}" }
         end
-        Result.new(errors: errors, warnings: warnings)
+        Result.new(errors: errors)
       end
 
       private
@@ -97,7 +95,9 @@ module Vkit
         unknown_keys(context.keys, CONTEXT_KEYS, path) + context.filter_map do |key, value|
           case key.to_s
           when "requester_clearance"
-            "#{path}.requester_clearance can't match: VaultKit doesn't record a requester's clearance yet."
+            "#{path}.requester_clearance #{value} isn't one of: #{CLEARANCES.join(', ')}" unless CLEARANCES.include?(value.to_s)
+          when "requester_region"
+            "#{path}.requester_region #{value} isn't one of: #{REGIONS.join(', ')}" unless REGIONS.include?(value.to_s)
           when "time"
             "#{path}.time only works under match.context." if path == "context"
           when "environment"
@@ -113,15 +113,6 @@ module Vkit
         return [] if match["fields"].is_a?(Hash) && (match["fields"].keys.map(&:to_s) & %w[any contains sensitivity]).any?
 
         ["a mask policy needs match.fields (any, contains or sensitivity) to say which fields to mask"]
-      end
-
-      def cautions(policy)
-        [policy["context"], (policy["match"] || {})["context"]].compact.select { |c| c.is_a?(Hash) }.filter_map do |context|
-          next unless context.key?("requester_region")
-
-          "requester_region comes from the request itself (users have no region), " \
-            "so a requester can leave it out. Don't rely on it for data residency."
-        end
       end
     end
   end

@@ -14,8 +14,7 @@ Policies match fields by their labels in `datasets/registry.yaml`: each field's
 as a tag. `vkit scan` suggests labels; review them before deploying.
 
 `vkit policy bundle` rejects a policy that can never match, for example one that
-uses a tag no field can have, and warns about one that matches on something the
-requester supplies.
+uses a tag no field can have.
 
 ---
 
@@ -44,6 +43,8 @@ context:                           # OPTIONAL: who is asking, and where
   dataset_region: EU | US | CA | APAC                           # the datasource's
   requester_role: <role>           # admin, member, approver, an approval group,
                                    # or agent (the default for agent tokens)
+  requester_clearance: low | medium | high   # set by an admin on the user or token
+  requester_region: EU | US | CA | APAC      # set by an admin on the user or token
 
 action:                            # REQUIRED: exactly one of these is true
   deny: true
@@ -63,14 +64,22 @@ The tags the classifier assigns are `pii`, `financial`, `credential` and
 `internal`. You can use your own by setting `category` on fields in
 `datasets/registry.yaml`.
 
-### Context VaultKit can't enforce yet
+### Requester clearance and region
 
-- `requester_clearance`: VaultKit doesn't record a clearance for users or agent
-  tokens, so a policy using it never matches. `vkit policy bundle` rejects it.
-- `requester_region`: users have no region, so the value comes from the request
-  itself, and a requester can leave it out. `vkit policy bundle` warns about it;
-  don't rely on it for data residency. `dataset_region` comes from the datasource
-  and is safe to use.
+Admins set a clearance and a region on each user (Team, Edit member) and agent
+token. Requests can't claim their own, so policies can rely on them, for example
+for data residency:
+
+```yaml
+context:
+  requester_region: US
+  dataset_region: EU
+```
+
+A policy that names a clearance or region doesn't match a requester without one.
+There's no "not equal", so to restrict everyone below a level, match the levels
+you want to restrict (for example one policy each for `low` and `medium`).
+Requires a control plane with admin-set clearance and region.
 
 ---
 
@@ -89,11 +98,10 @@ When several approval policies match, every one of their approver groups must
 sign off, and the shortest TTL applies. Masking from every matching mask policy
 is combined. With no matching policy, a request is allowed.
 
-After an approval, each field is checked again on its own, without the
-requester's context, and a field is masked if the strongest policy that still
-matches is a mask. So a mask policy with no `context` keeps a field masked after
-approval, unless an approval or deny policy with no `context` also matches it.
-The packs give their approval policies a context for this reason.
+Masking combines every mask policy that matches, with the requester's context;
+when two mask one field, the strictest method wins (full, then hash, then
+partial). An approval lifts the approval requirement, not the masks: a field a
+mask policy covers stays masked after approval.
 
 ---
 

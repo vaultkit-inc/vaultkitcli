@@ -50,9 +50,17 @@ class MatchCheckTest < Minitest::Test
     assert_empty check("match" => { "dataset" => "customers" }).errors
   end
 
-  def test_rejects_context_vaultkit_never_sets
-    assert_error({ "context" => { "requester_clearance" => "low" } }, /requester_clearance can't match/)
-    assert_error({ "match" => { "context" => { "requester_clearance" => "low" } } }, /match.context.requester_clearance/)
+  def test_accepts_admin_set_clearance_and_region
+    assert_empty check("context" => { "requester_clearance" => "low", "requester_region" => "US",
+                                      "dataset_region" => "EU" }).errors
+  end
+
+  def test_rejects_clearances_and_regions_admins_cannot_set
+    assert_error({ "context" => { "requester_clearance" => "secret" } }, /requester_clearance secret isn't one of: low, medium, high/)
+    assert_error({ "match" => { "context" => { "requester_region" => "Mars" } } }, /match.context.requester_region Mars/)
+  end
+
+  def test_rejects_time_windows_where_the_engine_ignores_them
     assert_error({ "context" => { "time" => { "after" => "09:00" } } }, /time only works under match.context/)
     assert_empty check("match" => { "context" => { "time" => { "after" => "09:00" } } }).errors
   end
@@ -64,13 +72,6 @@ class MatchCheckTest < Minitest::Test
 
   def test_rejects_a_mask_policy_with_no_fields_to_mask
     assert_error({ "action" => { "mask" => true }, "match" => {} }, /mask policy needs match.fields/)
-  end
-
-  def test_warns_when_matching_on_the_requesters_own_region
-    result = check("context" => { "requester_region" => "US", "dataset_region" => "EU" })
-
-    assert_empty result.errors
-    assert_match(/requester_region comes from the request itself/, result.warnings.first)
   end
 
   def test_every_shipped_pack_policy_is_valid_and_can_match
@@ -86,18 +87,16 @@ class MatchCheckTest < Minitest::Test
     result = Vkit::Policy::MatchCheck.call(policies, { "datasets" => [] })
 
     assert_empty result.errors
-    assert_empty result.warnings
   end
 
   def test_catches_the_v1_pack_policies_that_never_fired
     v1 = [
-      { "id" => "deny_sensitive_without_clearance", "context" => { "requester_clearance" => "low" } },
       { "id" => "fin_require_approval_financial_prod", "match" => { "fields" => { "category" => "financial" } } },
       { "id" => "fin_deny_non_admin_pci_prod", "match" => { "fields" => { "contains" => ["pci"] } } },
       { "id" => "ai_mask_sensitive_for_agents", "match" => { "fields" => { "contains" => %w[pii financial phi secrets] } } }
     ]
     errors = Vkit::Policy::MatchCheck.call(v1, { "datasets" => [] }).errors
 
-    assert_equal 4, errors.size
+    assert_equal 3, errors.size
   end
 end

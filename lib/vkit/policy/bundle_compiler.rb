@@ -11,12 +11,11 @@ module Vkit
     class BundleCompiler
       FORMAT_VERSION = "v1"
 
-      # Warnings (policies that match on what a requester supplies) are
-      # appended to `warnings`; policies that can never match raise.
-      def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {}, warnings: [])
+      # Raises if a policy can never match (see MatchCheck).
+      def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {})
         policies = load_policies(policies_dir)
         registry = load_registry(registry_dir)
-        check_matches!(policies, registry, warnings)
+        check_matches!(policies, registry)
 
         bundle = {
           "bundle" => {
@@ -54,9 +53,8 @@ module Vkit
         end
       end
 
-      def self.check_matches!(policies, registry, warnings)
+      def self.check_matches!(policies, registry)
         result = MatchCheck.call(policies, registry)
-        warnings.concat(result.warnings)
         return if result.errors.empty?
 
         raise ValidationError, <<~MSG
