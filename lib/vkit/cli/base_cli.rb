@@ -331,11 +331,17 @@ module Vkit
           option :name, required: true, desc: "Human-readable name (e.g. billing-bot)"
           option :expires_in, type: :string, desc: "Token lifetime (e.g. 1h, 24h, 30d)"
           option :role, type: :string, default: "agent", desc: "Role assigned to this token"
+          option :tenant, type: :string, desc: "Tenant this token acts for on tenant-scoped datasets"
+          option :clearance, type: :string, desc: "Clearance policies see: low, medium or high"
+          option :region, type: :string, desc: "Region policies see: EU, US, CA or APAC"
           def create
             Commands::AgentTokensCreateCommand.new.call(
               name: options[:name],
               expires_in: options[:expires_in],
-              role: options[:role]
+              role: options[:role],
+              tenant: options[:tenant],
+              clearance: options[:clearance],
+              region: options[:region]
             )
           end
 

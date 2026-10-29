@@ -4,6 +4,7 @@ require "digest"
 require "time"
 require_relative "policy_validator"
 require_relative "match_check"
+require_relative "tenancy_check"
 require_relative "validation_error"
 
 module Vkit
@@ -14,8 +15,9 @@ module Vkit
       # Raises if a policy can never match (see MatchCheck).
       def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {})
         policies = load_policies(policies_dir)
-        registry = load_registry(registry_dir)
-        check_matches!(policies, registry)
+        raw_registry = load_raw_registry(registry_dir)
+        registry = normalize_registry(raw_registry)
+        check_matches!(policies, registry, raw_registry)
 
         bundle = {
           "bundle" => {
@@ -53,26 +55,25 @@ module Vkit
         end
       end
 
-      def self.check_matches!(policies, registry)
-        result = MatchCheck.call(policies, registry)
-        return if result.errors.empty?
+      def self.check_matches!(policies, registry, raw_registry)
+        errors = MatchCheck.call(policies, registry).errors + TenancyCheck.call(raw_registry)
+        return if errors.empty?
 
         raise ValidationError, <<~MSG
-          These policies can never match, so they would never protect anything:
+          These policies or datasets would never protect anything as written:
 
-          #{result.errors.map { |e| "  - #{e}" }.join("\n")}
+          #{errors.map { |e| "  - #{e}" }.join("\n")}
 
           Fix or remove them. If they came from a policy pack, `vkit policy pack upgrade` installs
           versions that can match.
         MSG
       end
 
-      def self.load_registry(dir)
+      def self.load_raw_registry(dir)
         path = File.join(dir, "registry.yaml")
         raise "Missing datasets/registry.yaml" unless File.exist?(path)
 
-        raw = YAML.load_file(path)
-        normalize_registry(raw)
+        YAML.load_file(path) || {}
       end
 
       # Normalization
@@ -156,8 +157,11 @@ module Vkit
           {
             "name" => name.to_s,
             "datasource" => data["datasource"].to_s,
+            # A field name confines every query to the requester's tenant;
+            # false (a deliberately shared table) only matters to TenancyCheck.
+            "tenant_column" => (data["tenant_column"] if data["tenant_column"].is_a?(String)),
             "fields" => normalize_fields(data["fields"] || {})
-          }
+          }.compact
         end
       
         datasources =
