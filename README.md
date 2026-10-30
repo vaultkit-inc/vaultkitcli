@@ -200,6 +200,14 @@ Clear stored credentials and end session.
 vkit logout
 ```
 
+### Where the login is saved
+
+`vkit login` saves the endpoint and token in the macOS Keychain, or in the Secret
+Service keyring (GNOME Keyring, KWallet) on Linux when `secret-tool` is installed.
+Elsewhere, including Windows, or when saving to the keychain fails (for example, over
+SSH with no unlocked keyring), it saves them to `~/.vkit/credentials.json`, readable
+only by you, and says so. Login tokens expire after an hour.
+
 ### Credentials from the environment
 
 `vkit` normally uses the login saved by `vkit login`, in your OS keychain or

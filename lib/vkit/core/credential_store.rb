@@ -15,6 +15,8 @@ module Vkit
     class CredentialStore
       SERVICE = "vkit"
       ACCOUNT = "credentials"
+      # security -i reads lines of about 4 KB; a login is well under that.
+      MAC_KEYCHAIN_MAX_HEX = 3_900
 
       @override_noticed = false
 
@@ -34,15 +36,7 @@ module Vkit
           "user" => user
         }
 
-        case
-        when mac?
-          mac_keychain_store(payload)
-        when linux? && secret_tool_available?
-          linux_secret_service_store(payload)
-        else
-          file_store(payload)
-        end
-
+        store(payload)
         true
       end
 
@@ -56,16 +50,8 @@ module Vkit
         return unless payload
       
         payload["user"] = user
-      
-        case
-        when mac?
-          mac_keychain_store(payload)
-        when linux? && secret_tool_available?
-          linux_secret_service_store(payload)
-        else
-          file_store(payload)
-        end
-      end      
+        store(payload)
+      end
 
       def endpoint
         load_payload&.dig("endpoint")
@@ -110,9 +96,8 @@ module Vkit
           mac_keychain_delete
         when linux? && secret_tool_available?
           linux_secret_service_delete
-        else
-          file_delete
         end
+        file_delete
       end
 
       def clear_token!
@@ -120,15 +105,7 @@ module Vkit
         return unless payload
       
         payload.delete("token")
-      
-        case
-        when mac?
-          mac_keychain_store(payload)
-        when linux? && secret_tool_available?
-          linux_secret_service_store(payload)
-        else
-          file_store(payload)
-        end
+        store(payload)
       end
 
       # endpoint and token only; the user is looked up separately (#user),
@@ -137,15 +114,40 @@ module Vkit
         env_override || stored_payload
       end
 
+      # The keychain first, then the file, which also holds the login when
+      # saving to the keychain failed.
       def stored_payload
-        case
-        when mac?
-          mac_keychain_load
-        when linux? && secret_tool_available?
-          linux_secret_service_load
-        else
-          file_load
+        keychain =
+          case
+          when mac?
+            mac_keychain_load
+          when linux? && secret_tool_available?
+            linux_secret_service_load
+          end
+
+        keychain || file_load
+      end
+
+      # Saves to the OS keychain when there is one. If that fails (no
+      # unlocked keyring over SSH, a locked login keychain), saves to
+      # ~/.vkit instead and says so, rather than reporting a login that
+      # wasn't kept.
+      def store(payload)
+        saved =
+          case
+          when mac?
+            mac_keychain_store(payload)
+          when linux? && secret_tool_available?
+            linux_secret_service_store(payload)
+          end
+
+        if saved
+          file_delete
+          return
         end
+
+        warn "vkit: couldn't save to the system keychain; saved to #{@fallback_path} instead." unless saved.nil?
+        file_store(payload)
       end
 
       def override_user(override)
@@ -171,15 +173,19 @@ module Vkit
         system("which secret-tool > /dev/null 2>&1")
       end
 
+      # `security -i` reads the command from stdin, so the token never
+      # appears in the process list, as it would with `-w` on the command
+      # line. The data goes in hex (-X) to avoid quoting.
       def mac_keychain_store(payload)
+        hex = payload.to_json.unpack1("H*")
+        return false if hex.bytesize > MAC_KEYCHAIN_MAX_HEX
+
         mac_keychain_delete
-        system(
-          "security", "add-generic-password",
-          "-a", ACCOUNT,
-          "-s", SERVICE,
-          "-w", payload.to_json,
-          "-U"
+        _stdout, _stderr, status = Open3.capture3(
+          "security", "-i",
+          stdin_data: "add-generic-password -a #{ACCOUNT} -s #{SERVICE} -U -X #{hex}\n"
         )
+        status.success?
       end
 
       def mac_keychain_load
@@ -208,7 +214,7 @@ module Vkit
       end
 
       def linux_secret_service_store(payload)
-        Open3.capture3(
+        _stdout, _stderr, status = Open3.capture3(
           "secret-tool",
           "store",
           "--label=VaultKit Credentials",
@@ -216,6 +222,7 @@ module Vkit
           "account", ACCOUNT,
           stdin_data: payload.to_json
         )
+        status.success?
       end
 
       def linux_secret_service_load
@@ -234,7 +241,7 @@ module Vkit
       end
 
       def linux_secret_service_delete
-        linux_secret_service_store({})
+        system("secret-tool", "clear", "service", SERVICE, "account", ACCOUNT, out: File::NULL, err: File::NULL)
       end
 
       def file_store(payload)
