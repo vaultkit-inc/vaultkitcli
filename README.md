@@ -206,7 +206,7 @@ vkit logout
 Service keyring (GNOME Keyring, KWallet) on Linux when `secret-tool` is installed.
 Elsewhere, including Windows, or when saving to the keychain fails (for example, over
 SSH with no unlocked keyring), it saves them to `~/.vkit/credentials.json`, readable
-only by you, and says so. Login tokens expire after an hour.
+only by you, and says so. Login tokens expire after 2 hours.
 
 ### Credentials from the environment
 
