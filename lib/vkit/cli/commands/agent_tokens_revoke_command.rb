@@ -21,7 +21,7 @@ module Vkit
 
             authenticated_client.post(
               "/api/v1/orgs/#{org}/agent_tokens/#{token["id"]}/revoke",
-              body: {}
+              body: { reason: options[:reason] }.compact
             )
 
             puts "🛑 AGENT TOKEN REVOKED"
@@ -29,8 +29,9 @@ module Vkit
             puts "🧠 Name:   #{token["name"]}"
             puts "🏷  Prefix: #{token["prefix"]}"
             puts "🆔 ID:     #{token["id"]}"
+            puts "📝 Reason: #{options[:reason]}" if options[:reason]
             puts
-            puts "✅ The token is no longer valid."
+            puts "✅ The token is no longer valid, and its grants are revoked."
           end
         end
 

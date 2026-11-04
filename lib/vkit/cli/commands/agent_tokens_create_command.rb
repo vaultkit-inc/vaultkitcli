@@ -25,6 +25,7 @@ module Vkit
             puts
 
             puts "🧠 Name:       #{token["name"]}"
+            puts "📝 Label:      #{token["label"]}" if token["label"]
             puts "🎭 Role:       #{token["role"]}"
             puts "🏢 Tenant:     #{token["tenant"]}" if token["tenant"]
             puts "🛡  Clearance:  #{token["clearance"]}" if token["clearance"]
@@ -49,6 +50,7 @@ module Vkit
         def build_body(options)
           body = {
             name: options.fetch(:name),
+            label: options[:label],
             role: options[:role],
             tenant: options[:tenant],
             clearance: options[:clearance],
