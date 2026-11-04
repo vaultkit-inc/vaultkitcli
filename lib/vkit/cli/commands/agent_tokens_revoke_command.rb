@@ -8,6 +8,9 @@ module Vkit
       class AgentTokensRevokeCommand < BaseCommand
         def call(options)
           token_ref = options.fetch(:token)
+          reason = options[:reason].to_s.strip
+          # The control plane refuses a revoke without one.
+          raise "A reason is required (--reason)" if reason.empty?
 
           with_auth do
             user = credential_store.user
@@ -21,7 +24,7 @@ module Vkit
 
             authenticated_client.post(
               "/api/v1/orgs/#{org}/agent_tokens/#{token["id"]}/revoke",
-              body: { reason: options[:reason] }.compact
+              body: { reason: reason }
             )
 
             puts "🛑 AGENT TOKEN REVOKED"
@@ -29,7 +32,7 @@ module Vkit
             puts "🧠 Name:   #{token["name"]}"
             puts "🏷  Prefix: #{token["prefix"]}"
             puts "🆔 ID:     #{token["id"]}"
-            puts "📝 Reason: #{options[:reason]}" if options[:reason]
+            puts "📝 Reason: #{reason}"
             puts
             puts "✅ The token is no longer valid, and its grants are revoked."
           end

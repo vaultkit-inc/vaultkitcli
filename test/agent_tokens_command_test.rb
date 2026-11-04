@@ -4,6 +4,7 @@
 require "minitest/autorun"
 require "json"
 require "time"
+require_relative "../lib/vkit/cli"
 require_relative "../lib/vkit/cli/commands/base_command"
 require_relative "../lib/vkit/cli/commands/agent_tokens_create_command"
 require_relative "../lib/vkit/cli/commands/agent_tokens_revoke_command"
@@ -85,9 +86,16 @@ class AgentTokensRevokeTest < Minitest::Test
     assert_includes out, "Reason: Leaked in CI logs"
   end
 
-  def test_sends_no_reason_unless_given
-    _, client = revoke
+  def test_refuses_to_revoke_without_a_reason
+    error = assert_raises(RuntimeError) { revoke(reason: "  ") }
 
-    assert_equal({}, client.posts.first.last)
+    assert_equal "A reason is required (--reason)", error.message
+  end
+
+  def test_the_reason_is_a_required_option
+    tokens = Vkit::CLI::BaseCLI.subcommand_classes["agents"].subcommand_classes["tokens"]
+
+    assert tokens.commands["revoke"].options[:reason].required
+    assert Vkit::CLI::BaseCLI.commands["grant:revoke"].options[:reason].required
   end
 end

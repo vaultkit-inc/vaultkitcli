@@ -115,7 +115,7 @@ module Vkit
 
       desc "grant:revoke", "Revoke a grant"
       option :grant, type: :string, required: true
-      option :reason, type: :string
+      option :reason, type: :string, required: true, desc: "Why it's revoked; recorded in the audit log"
       option :force, type: :boolean, default: false
       define_method("grant:revoke") do
         Commands::GrantRevokeCommand.new.call(
@@ -351,7 +351,7 @@ module Vkit
           # agents tokens revoke
           desc "revoke", "Revoke an agent token"
           option :token, required: true, desc: "Token ID or prefix"
-          option :reason, type: :string, desc: "Why it's revoked; recorded in the audit log"
+          option :reason, type: :string, required: true, desc: "Why it's revoked; recorded in the audit log"
           option :force, type: :boolean, default: false, desc: "Skip confirmation"
           def revoke
             Commands::AgentTokensRevokeCommand.new.call(
