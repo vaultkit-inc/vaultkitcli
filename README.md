@@ -43,7 +43,6 @@ The VaultKit CLI provides command-line access to VaultKit for:
 | **Datasource Admin** | Register and manage database connections (admin only) |
 | **Schema Discovery** | Scan datasources and detect schema drift |
 | **Policy Deployment** | Build, validate, and deploy policy bundles |
-| **Audit Queries** | Search and export audit logs |
 
 ### Mental Model
 
@@ -266,13 +265,17 @@ vkit request --aql '{
 }'
 
 # Output:
-# ✓ Request granted immediately
-# Grant ID: gr_abc123xyz
-# TTL: 4 hours
-# Use: vkit fetch --grant gr_abc123xyz
+# ✅ ACCESS GRANTED
+# Grant Ref: g_public_reports_3f9a
+# Request ID: 8d1c0a2e-… (look it up under Activity in the console)
+# Expires: 2024-01-15 18:00:00 UTC
+# Masked Fields: none
+#
+# To execute and retrieve the data, run:
+#    vkit fetch --grant g_public_reports_3f9a
 
 # 2. Fetch data
-vkit fetch --grant gr_abc123xyz --format table
+vkit fetch --grant g_public_reports_3f9a --format table
 ```
 
 ### Workflow 2: Approval Required
@@ -286,17 +289,17 @@ vkit request --aql '{
 }'
 
 # Output:
-# ⏳ Approval required
-# Request ID: req_20240115_xyz789
-# Approver: finance_manager
+# ⏳ QUEUED for approval
+# Request ID: 3b7e19c4-… (look it up under Activity in the console)
+# Approver roles: finance_manager
 # Reason: Financial data requires manager approval
-# Status: PENDING
+#
+# Once it's approved, run the same request again to get the data.
 
 # 2. Check status
 vkit requests list --state pending
 
-# 3. After approval, fetch data
-vkit fetch --grant gr_approved_abc123
+# 3. After approval, run the same request again; it returns the rows
 ```
 
 ### Workflow 3: Denied Access
@@ -309,11 +312,9 @@ vkit request --aql '{
 }'
 
 # Output:
-# ❌ Request denied
+# ❌ DENIED
 # Reason: Direct payment card data access forbidden
-# Policy: pci_dss_restrictions
-# Alternative: Use tokenized_card_id field instead
-# Audit ID: audit_20240115_denied_123
+# Request ID: 7f29e0aa-… (look it up under Activity in the console)
 ```
 
 ---
@@ -869,60 +870,71 @@ vkit policy show <POLICY_ID>
 
 ---
 
-### Audit Commands
+### Agent Token Commands (Admin Only)
 
-#### `vkit audit query`
+Agents (an MCP server, a scheduled job, a coding assistant) authenticate with
+an agent token instead of a login. An agent is every token with the same
+`--name`; the console's Agents page groups them that way.
 
-Search audit logs.
+#### `vkit agents tokens create`
 
 ```bash
-vkit audit query [OPTIONS]
+vkit agents tokens create --name NAME [OPTIONS]
 ```
 
 **Options:**
-- `--user` — Filter by user email
-- `--action` — Filter by action: `granted`, `denied`, `pending`
-- `--dataset` — Filter by dataset name
-- `--days` — Look back N days (default: 7)
-- `--limit` — Number of results (default: 100)
-- `--format` — Output format: `json`, `table`, `csv`
+- `--name` — The agent's name (e.g. `incident-bot`); tokens with the same name are one agent
+- `--label` — What this token is for, shown next to it in the console (e.g. `"PagerDuty runner"`)
+- `--for` — Email of the person the agent acts for. Their Activity shows the agent's requests, so a member can follow what an agent does on their behalf. Must be an active member of your organization. Without it the agent acts for no one, and only admins see its requests.
+- `--expires-in` — Lifetime: `1h`, `24h`, `30d` (default: no expiry)
+- `--role`, `--clearance`, `--region`, `--tenant` — What policies see for this token
 
-**Examples:**
+The token is printed once; store it straight away. The console never shows it.
+
 ```bash
-# All queries by a user
-vkit audit query --user analyst@company.com --days 30
-
-# Denied access attempts
-vkit audit query --action denied --days 7
-
-# Access to specific dataset
-vkit audit query --dataset customers --action granted
-
-# Export to CSV
-vkit audit query --user analyst@company.com --format csv --output audit_report.csv
+vkit agents tokens create --name incident-bot --label "PagerDuty runner" \
+  --for sam@acme.test --expires-in 30d
 ```
 
-#### `vkit audit export`
+`--for` names who the agent acts for. It's separate from who created the
+token (you), which the console shows as "Created by".
 
-Export audit logs for compliance reporting.
+#### `vkit agents tokens list`
 
 ```bash
-vkit audit export --start-date <DATE> --end-date <DATE> [OPTIONS]
+vkit agents tokens list [--agent NAME] [--format table|json]
 ```
 
-**Options:**
-- `--start-date` — Start date (YYYY-MM-DD)
-- `--end-date` — End date (YYYY-MM-DD)
-- `--format` — Output format: `json`, `csv` (default: `csv`)
-- `--output` — Output file path
+#### `vkit agents tokens revoke`
 
-**Example:**
 ```bash
-vkit audit export \
-  --start-date 2024-01-01 \
-  --end-date 2024-01-31 \
-  --format csv \
-  --output compliance_reports/january_2024.csv
+vkit agents tokens revoke --token PREFIX_OR_ID --reason "Leaked in CI logs"
+```
+
+`--reason` is required and recorded in the audit log. The token stops working
+at once: its live grants are revoked, and a request already in flight with it
+gets no rows.
+
+`--for` needs a control plane with the console's Agents page; an older one
+ignores it, and the token acts for no one. That control plane also refuses a
+revoke without a reason, so older CLI versions can't revoke against it.
+
+### Audit Log
+
+There's no `vkit audit` command. Every request, decision and revoke is in the
+audit log; read it in the console:
+
+- **Activity** lists every request: who asked, what was decided and why, and
+  what ran. Filter by decision, agent, person, dataset or time, and open one
+  by the request ID that `vkit request` prints.
+- **Export CSV** on the Activity page downloads the filtered view.
+- A refused request, for example one made with a revoked agent token, prints
+  its code and request ID too:
+
+```bash
+# API 401: Agent token vkit_agent_f5f5d9 was revoked at 2026-11-04T19:55:11Z: Leaked in CI logs
+# Code: token_revoked
+# Request ID: 7973fcba-… (look it up under Activity in the console)
 ```
 
 ---
@@ -1082,9 +1094,7 @@ docker compose up
 
 **Problem:**
 ```
-Error: Grant has expired
-Grant ID: gr_abc123xyz
-Expired at: 2024-01-15 12:00:00 UTC
+API 403: Grant expired
 ```
 
 **Solutions:**

@@ -42,6 +42,8 @@ module Vkit
                   "ID"         => t["id"],
                   "Agent"      => t["name"],
                   "Prefix"     => t["prefix"],
+                  "Label"      => t["label"] || "-",
+                  "Acts For"   => t.dig("acts_for", "email") || "-",
                   "Expires At" => t["expires_at"] || "never",
                   "Revoked At" => t["revoked_at"] || "-",
                   "Created At" => t["created_at"]

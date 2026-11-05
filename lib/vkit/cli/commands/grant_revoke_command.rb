@@ -5,6 +5,10 @@ module Vkit
     module Commands
       class GrantRevokeCommand < BaseCommand
         def call(grant_ref:, reason:, force:)
+          reason = reason.to_s.strip
+          # The control plane refuses a revoke without one.
+          raise "A reason is required (--reason)" if reason.empty?
+
           with_auth do
             user = credential_store.user
             org  = user["organization_slug"]
@@ -14,7 +18,7 @@ module Vkit
             unless force
               puts "⚠️  You are about to revoke grant: #{grant_ref}"
               puts "   Organization: #{org}"
-              puts "   Reason: #{reason || 'Grant revoked via CLI'}"
+              puts "   Reason: #{reason}"
               print "Continue? (y/N): "
               answer = STDIN.gets.strip
               return puts("Aborted.") unless answer.downcase == "y"

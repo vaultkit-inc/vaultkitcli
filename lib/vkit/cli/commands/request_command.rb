@@ -43,9 +43,17 @@ module Vkit
 
         private
 
+        # Every response names its request; the console's Activity page
+        # finds it by this id.
+        def print_request_id(result)
+          return if result["request_id"].to_s.empty?
+
+          puts "Request ID: #{result["request_id"]} (look it up under Activity in the console)"
+        end
+
         def print_queued(result)
           puts "⏳ QUEUED for approval"
-          puts "Request ID: #{result["request_id"]}"
+          print_request_id(result)
 
           roles = ApprovalRoles.required_roles(result)
           puts "Approver roles: #{roles.join(', ')}" if roles.any?
@@ -67,6 +75,7 @@ module Vkit
           when "denied"
             puts "❌ DENIED"
             puts "Reason: #{result["reason"]}"
+            print_request_id(result)
             exit 2
 
           # The control plane answers "pending_approval"; "queued" is what
@@ -79,7 +88,8 @@ module Vkit
             expires_at = Time.parse(result["expires_at"]).getlocal
 
             puts "✅ ACCESS GRANTED"
-            puts "Grant ID: #{result["grant_id"]}"
+            puts "Grant Ref: #{result["grant_ref"]}"
+            print_request_id(result)
             puts "Expires: #{expires_at.strftime("%Y-%m-%d %H:%M:%S %Z")}"
 
             if (mask = result["masked_fields"]) && mask.any?
@@ -90,7 +100,7 @@ module Vkit
 
             puts
             puts "To execute and retrieve the data, run:"
-            puts "   vkit fetch --grant #{result["grant_ref"] || result["grant_id"]}"
+            puts "   vkit fetch --grant #{result["grant_ref"]}"
             exit 0
 
           when "ok"
@@ -102,6 +112,8 @@ module Vkit
             end
 
             puts "✅ OK — #{rows.size} rows"
+            puts "Grant Ref: #{result["grant_ref"]} (reused)" if result["grant_ref"]
+            print_request_id(result)
 
             if meta.any?
               puts "ℹ️  Query Metadata:"
@@ -116,6 +128,7 @@ module Vkit
           else
             puts "❓ Unexpected response:"
             puts result.inspect
+            print_request_id(result) if result.is_a?(Hash)
             exit 1
           end
         end

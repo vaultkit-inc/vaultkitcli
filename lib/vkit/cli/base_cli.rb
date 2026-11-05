@@ -115,7 +115,7 @@ module Vkit
 
       desc "grant:revoke", "Revoke a grant"
       option :grant, type: :string, required: true
-      option :reason, type: :string
+      option :reason, type: :string, required: true, desc: "Why it's revoked; recorded in the audit log"
       option :force, type: :boolean, default: false
       define_method("grant:revoke") do
         Commands::GrantRevokeCommand.new.call(
@@ -335,9 +335,14 @@ module Vkit
           option :tenant, type: :string, desc: "Tenant this token acts for on tenant-scoped datasets"
           option :clearance, type: :string, desc: "Clearance policies see: low, medium or high"
           option :region, type: :string, desc: "Region policies see: EU, US, CA or APAC"
+          option :label, type: :string, desc: "What this token is for, shown in the console (e.g. \"PagerDuty runner\")"
+          option :for, type: :string, banner: "EMAIL",
+                       desc: "Email of the person the agent acts for; they see its requests in Activity"
           def create
             Commands::AgentTokensCreateCommand.new.call(
               name: options[:name],
+              label: options[:label],
+              for: options[:for],
               expires_in: options[:expires_in],
               role: options[:role],
               tenant: options[:tenant],
@@ -349,10 +354,12 @@ module Vkit
           # agents tokens revoke
           desc "revoke", "Revoke an agent token"
           option :token, required: true, desc: "Token ID or prefix"
+          option :reason, type: :string, required: true, desc: "Why it's revoked; recorded in the audit log"
           option :force, type: :boolean, default: false, desc: "Skip confirmation"
           def revoke
             Commands::AgentTokensRevokeCommand.new.call(
               token: options[:token],
+              reason: options[:reason],
               force: options[:force]
             )
           end

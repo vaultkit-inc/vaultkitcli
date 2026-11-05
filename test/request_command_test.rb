@@ -68,4 +68,37 @@ class RequestCommandResultTest < Minitest::Test
     assert_equal 1, status
     assert_includes out, "Unexpected response"
   end
+
+  def test_granted_prints_the_grant_ref_and_request_id
+    out, status = handle({ "status" => "granted", "request_id" => "8d1c0a2e", "grant_ref" => "g_orders_dfdf",
+                           "expires_at" => "2026-11-04T21:00:00Z", "masked_fields" => [] })
+
+    assert_equal 0, status
+    assert_includes out, "Grant Ref: g_orders_dfdf"
+    refute_match(/Grant ID:\s*$/, out)
+    assert_includes out, "Request ID: 8d1c0a2e (look it up under Activity in the console)"
+    assert_includes out, "vkit fetch --grant g_orders_dfdf"
+  end
+
+  def test_denied_prints_the_request_id
+    out, status = handle({ "status" => "denied", "reason" => "Secrets never leave", "request_id" => "7f29e0aa" })
+
+    assert_equal 2, status
+    assert_includes out, "Reason: Secrets never leave"
+    assert_includes out, "Request ID: 7f29e0aa"
+  end
+
+  def test_rows_print_the_request_id_and_the_reused_grant
+    out, = handle({ "status" => "ok", "reused" => true, "request_id" => "7f2a91aa", "grant_ref" => "g_orders_dfdf",
+                    "rows" => [], "meta" => {} })
+
+    assert_includes out, "Grant Ref: g_orders_dfdf (reused)"
+    assert_includes out, "Request ID: 7f2a91aa"
+  end
+
+  def test_leaves_the_request_id_out_when_there_is_none
+    out, = handle({ "status" => "denied", "reason" => "No" })
+
+    refute_includes out, "Request ID"
+  end
 end
