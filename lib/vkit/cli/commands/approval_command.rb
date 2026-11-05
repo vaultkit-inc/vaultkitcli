@@ -61,7 +61,7 @@ module Vkit
               puts "   The grant is issued once every role has approved."
             else
               puts "✅ Approved request #{id}"
-              puts "   → Grant Ref: #{res["grant_ref"] || res["grant_id"]}"
+              puts "   → Grant Ref: #{res["grant_ref"]}"
               puts "   → Expires:   #{res["expires_at"]}"
             end
           end

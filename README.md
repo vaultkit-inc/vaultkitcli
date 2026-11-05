@@ -43,7 +43,6 @@ The VaultKit CLI provides command-line access to VaultKit for:
 | **Datasource Admin** | Register and manage database connections (admin only) |
 | **Schema Discovery** | Scan datasources and detect schema drift |
 | **Policy Deployment** | Build, validate, and deploy policy bundles |
-| **Audit Queries** | Search and export audit logs |
 
 ### Mental Model
 
@@ -266,13 +265,17 @@ vkit request --aql '{
 }'
 
 # Output:
-# ✓ Request granted immediately
-# Grant ID: gr_abc123xyz
-# TTL: 4 hours
-# Use: vkit fetch --grant gr_abc123xyz
+# ✅ ACCESS GRANTED
+# Grant Ref: g_public_reports_3f9a
+# Request ID: 8d1c0a2e-… (look it up under Activity in the console)
+# Expires: 2024-01-15 18:00:00 UTC
+# Masked Fields: none
+#
+# To execute and retrieve the data, run:
+#    vkit fetch --grant g_public_reports_3f9a
 
 # 2. Fetch data
-vkit fetch --grant gr_abc123xyz --format table
+vkit fetch --grant g_public_reports_3f9a --format table
 ```
 
 ### Workflow 2: Approval Required
@@ -286,17 +289,17 @@ vkit request --aql '{
 }'
 
 # Output:
-# ⏳ Approval required
-# Request ID: req_20240115_xyz789
-# Approver: finance_manager
+# ⏳ QUEUED for approval
+# Request ID: 3b7e19c4-… (look it up under Activity in the console)
+# Approver roles: finance_manager
 # Reason: Financial data requires manager approval
-# Status: PENDING
+#
+# Once it's approved, run the same request again to get the data.
 
 # 2. Check status
 vkit requests list --state pending
 
-# 3. After approval, fetch data
-vkit fetch --grant gr_approved_abc123
+# 3. After approval, run the same request again; it returns the rows
 ```
 
 ### Workflow 3: Denied Access
@@ -309,11 +312,9 @@ vkit request --aql '{
 }'
 
 # Output:
-# ❌ Request denied
+# ❌ DENIED
 # Reason: Direct payment card data access forbidden
-# Policy: pci_dss_restrictions
-# Alternative: Use tokenized_card_id field instead
-# Audit ID: audit_20240115_denied_123
+# Request ID: 7f29e0aa-… (look it up under Activity in the console)
 ```
 
 ---
@@ -918,60 +919,22 @@ gets no rows.
 ignores it, and the token acts for no one. That control plane also refuses a
 revoke without a reason, so older CLI versions can't revoke against it.
 
-### Audit Commands
+### Audit Log
 
-#### `vkit audit query`
+There's no `vkit audit` command. Every request, decision and revoke is in the
+audit log; read it in the console:
 
-Search audit logs.
-
-```bash
-vkit audit query [OPTIONS]
-```
-
-**Options:**
-- `--user` — Filter by user email
-- `--action` — Filter by action: `granted`, `denied`, `pending`
-- `--dataset` — Filter by dataset name
-- `--days` — Look back N days (default: 7)
-- `--limit` — Number of results (default: 100)
-- `--format` — Output format: `json`, `table`, `csv`
-
-**Examples:**
-```bash
-# All queries by a user
-vkit audit query --user analyst@company.com --days 30
-
-# Denied access attempts
-vkit audit query --action denied --days 7
-
-# Access to specific dataset
-vkit audit query --dataset customers --action granted
-
-# Export to CSV
-vkit audit query --user analyst@company.com --format csv --output audit_report.csv
-```
-
-#### `vkit audit export`
-
-Export audit logs for compliance reporting.
+- **Activity** lists every request: who asked, what was decided and why, and
+  what ran. Filter by decision, agent, person, dataset or time, and open one
+  by the request ID that `vkit request` prints.
+- **Export CSV** on the Activity page downloads the filtered view.
+- A refused request, for example one made with a revoked agent token, prints
+  its code and request ID too:
 
 ```bash
-vkit audit export --start-date <DATE> --end-date <DATE> [OPTIONS]
-```
-
-**Options:**
-- `--start-date` — Start date (YYYY-MM-DD)
-- `--end-date` — End date (YYYY-MM-DD)
-- `--format` — Output format: `json`, `csv` (default: `csv`)
-- `--output` — Output file path
-
-**Example:**
-```bash
-vkit audit export \
-  --start-date 2024-01-01 \
-  --end-date 2024-01-31 \
-  --format csv \
-  --output compliance_reports/january_2024.csv
+# API 401: Agent token vkit_agent_f5f5d9 was revoked at 2026-11-04T19:55:11Z: Leaked in CI logs
+# Code: token_revoked
+# Request ID: 7973fcba-… (look it up under Activity in the console)
 ```
 
 ---

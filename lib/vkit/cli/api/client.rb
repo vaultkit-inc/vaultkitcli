@@ -83,7 +83,7 @@ module Vkit
         
           when 403
             if body.is_a?(Hash) && body.key?("error")
-              raise APIError.new(code, body["error"])
+              raise APIError.from_body(code, body)
             else
               # Valid domain response (e.g. policy denied)
               body
@@ -93,21 +93,39 @@ module Vkit
             # Queued for approval
             body
         
-          when 422
-            raise APIError.new(code, body["error"] || body)
-        
           else
-            raise APIError.new(code, body["error"] || body)
+            raise APIError.from_body(code, body)
           end
         end        
       end
 
+      # The control plane's { error, code, request_id }. code says why in a
+      # word (token_revoked, token_expired), and request_id finds the request
+      # on the console's Activity page.
       class APIError < StandardError
-        attr_reader :status
+        attr_reader :status, :error, :code, :request_id
 
-        def initialize(status, message)
+        def self.from_body(status, body)
+          return new(status, body) unless body.is_a?(Hash)
+
+          new(status, body["error"] || body, code: body["code"], request_id: body["request_id"])
+        end
+
+        def initialize(status, error, code: nil, request_id: nil)
           @status = status
-          super("API #{status}: #{message}")
+          @error = error
+          @code = code
+          @request_id = request_id
+          super(describe)
+        end
+
+        private
+
+        def describe
+          lines = ["API #{status}: #{error}"]
+          lines << "Code: #{code}" if code
+          lines << "Request ID: #{request_id} (look it up under Activity in the console)" if request_id
+          lines.join("\n")
         end
       end
     end
