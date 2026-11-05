@@ -336,10 +336,13 @@ module Vkit
           option :clearance, type: :string, desc: "Clearance policies see: low, medium or high"
           option :region, type: :string, desc: "Region policies see: EU, US, CA or APAC"
           option :label, type: :string, desc: "What this token is for, shown in the console (e.g. \"PagerDuty runner\")"
+          option :for, type: :string, banner: "EMAIL",
+                       desc: "Email of the person the agent acts for; they see its requests in Activity"
           def create
             Commands::AgentTokensCreateCommand.new.call(
               name: options[:name],
               label: options[:label],
+              for: options[:for],
               expires_in: options[:expires_in],
               role: options[:role],
               tenant: options[:tenant],

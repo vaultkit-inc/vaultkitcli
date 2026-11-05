@@ -47,8 +47,9 @@ end
 class AgentTokensCreateTest < Minitest::Test
   include AgentTokenTestHelpers
 
-  def create(**options)
-    client = FakeClient.new(post: { "token" => TOKEN.merge("label" => options[:label]), "secret" => "s3cret" })
+  def create(acts_for: nil, **options)
+    token = TOKEN.merge("label" => options[:label], "acts_for" => acts_for)
+    client = FakeClient.new(post: { "token" => token, "secret" => "s3cret" })
     out, = capture_io { wire(Vkit::CLI::Commands::AgentTokensCreateCommand.new, client).call(name: "incident-bot", **options) }
     [out, client]
   end
@@ -65,6 +66,21 @@ class AgentTokensCreateTest < Minitest::Test
 
     assert_equal({ name: "incident-bot" }, client.posts.first.last)
     refute_includes out, "Label:"
+  end
+
+  def test_sends_who_the_agent_acts_for_and_prints_them
+    out, client = create(for: "sam@acme.test",
+                         acts_for: { "id" => "u2", "name" => "Sam Patel", "email" => "sam@acme.test" })
+
+    assert_equal({ name: "incident-bot", user_email: "sam@acme.test" }, client.posts.first.last)
+    assert_includes out, "Acts for:   Sam Patel <sam@acme.test>"
+  end
+
+  def test_says_when_the_agent_acts_for_no_one
+    out, client = create
+
+    refute client.posts.first.last.key?(:user_email)
+    assert_includes out, "Acts for:   no one"
   end
 end
 

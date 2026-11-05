@@ -869,6 +869,55 @@ vkit policy show <POLICY_ID>
 
 ---
 
+### Agent Token Commands (Admin Only)
+
+Agents (an MCP server, a scheduled job, a coding assistant) authenticate with
+an agent token instead of a login. An agent is every token with the same
+`--name`; the console's Agents page groups them that way.
+
+#### `vkit agents tokens create`
+
+```bash
+vkit agents tokens create --name NAME [OPTIONS]
+```
+
+**Options:**
+- `--name` — The agent's name (e.g. `incident-bot`); tokens with the same name are one agent
+- `--label` — What this token is for, shown next to it in the console (e.g. `"PagerDuty runner"`)
+- `--for` — Email of the person the agent acts for. Their Activity shows the agent's requests, so a member can follow what an agent does on their behalf. Must be an active member of your organization. Without it the agent acts for no one, and only admins see its requests.
+- `--expires-in` — Lifetime: `1h`, `24h`, `30d` (default: no expiry)
+- `--role`, `--clearance`, `--region`, `--tenant` — What policies see for this token
+
+The token is printed once; store it straight away. The console never shows it.
+
+```bash
+vkit agents tokens create --name incident-bot --label "PagerDuty runner" \
+  --for sam@acme.test --expires-in 30d
+```
+
+`--for` names who the agent acts for. It's separate from who created the
+token (you), which the console shows as "Created by".
+
+#### `vkit agents tokens list`
+
+```bash
+vkit agents tokens list [--agent NAME] [--format table|json]
+```
+
+#### `vkit agents tokens revoke`
+
+```bash
+vkit agents tokens revoke --token PREFIX_OR_ID --reason "Leaked in CI logs"
+```
+
+`--reason` is required and recorded in the audit log. The token stops working
+at once: its live grants are revoked, and a request already in flight with it
+gets no rows.
+
+`--for` needs a control plane with the console's Agents page; an older one
+ignores it, and the token acts for no one. That control plane also refuses a
+revoke without a reason, so older CLI versions can't revoke against it.
+
 ### Audit Commands
 
 #### `vkit audit query`

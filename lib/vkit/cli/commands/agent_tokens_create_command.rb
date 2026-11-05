@@ -26,6 +26,7 @@ module Vkit
 
             puts "🧠 Name:       #{token["name"]}"
             puts "📝 Label:      #{token["label"]}" if token["label"]
+            puts "👤 Acts for:   #{acts_for(token)}"
             puts "🎭 Role:       #{token["role"]}"
             puts "🏢 Tenant:     #{token["tenant"]}" if token["tenant"]
             puts "🛡  Clearance:  #{token["clearance"]}" if token["clearance"]
@@ -51,6 +52,8 @@ module Vkit
           body = {
             name: options.fetch(:name),
             label: options[:label],
+            # Resolved to a member of your organization by the control plane.
+            user_email: options[:for],
             role: options[:role],
             tenant: options[:tenant],
             clearance: options[:clearance],
@@ -62,6 +65,13 @@ module Vkit
           end
 
           body
+        end
+
+        def acts_for(token)
+          person = token["acts_for"]
+          return "no one (its requests show only to admins)" unless person
+
+          person["name"] == person["email"] ? person["email"] : "#{person["name"]} <#{person["email"]}>"
         end
 
         def parse_expires_in(value)
