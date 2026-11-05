@@ -1094,9 +1094,7 @@ docker compose up
 
 **Problem:**
 ```
-Error: Grant has expired
-Grant ID: gr_abc123xyz
-Expired at: 2024-01-15 12:00:00 UTC
+API 403: Grant expired
 ```
 
 **Solutions:**
