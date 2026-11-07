@@ -78,7 +78,13 @@
             "additionalProperties": false,
             "properties": {
               "name": { "type": "string" },
-              "version": { "type": "string" }
+              "version": { "type": "string" },
+              "policy_ids": {
+                "type": "array",
+                "minItems": 1,
+                "description": "Ids of the policies this pack contributes. Every one must be in policies.",
+                "items": { "type": "string", "minLength": 1 }
+              }
             }
           }
         }

@@ -6,7 +6,9 @@ module Vkit
   module CLI
     module Commands
       class PolicyPackUpgradeCommand < BaseCommand
-        def call(pack_name:, dir:, force: false)
+        # restore: rewrite an up-to-date pack's missing files without asking.
+        # Without it, a terminal is asked; anything else is told to rerun.
+        def call(pack_name:, dir:, force: false, restore: false, input: $stdin)
           ensure_project!(dir)
 
           manager = Vkit::CLI::PolicyPack::Manager.new(
@@ -22,7 +24,19 @@ module Vkit
               end
             end
 
+          results.each do |r|
+            restore_missing(manager, r, restore, input) if r[:status] == :missing
+          end
+
           print_summary(results)
+
+          if results.any? { |r| %i[failed missing].include?(r[:status]) }
+            if results.any? { |r| r[:status] == :missing }
+              puts "\nRestore them with 'vkit policy pack upgrade #{pack_name || "<pack>"} --restore'. " \
+                   "Until then 'vkit policy bundle' fails."
+            end
+            exit 1
+          end
 
           puts "\nRun 'vkit policy bundle' to recompile."
         rescue StandardError => e
@@ -41,6 +55,8 @@ module Vkit
         def summarize(pack, result)
           if result == :up_to_date
             { name: pack, status: :up_to_date }
+          elsif result[:status] == :missing
+            { name: pack, status: :missing, version: result[:version], files: result[:files] }
           else
             {
               name: pack,
@@ -50,6 +66,26 @@ module Vkit
               policies: result[:policies]
             }
           end
+        end
+
+        def restore_missing(manager, r, restore, input)
+          puts "⚠️  #{r[:name]} #{r[:version]} is installed, but #{r[:files].length} of its files are missing:"
+          r[:files].each { |f| puts "   #{f["path"]} (#{f["policy_id"]})" }
+
+          return unless restore || confirm?(input, "Restore them from the pack? [Y/n] ")
+
+          manager.restore!(r[:name])
+          r[:status] = :restored
+        rescue => e
+          r.merge!(status: :failed, error: e.message)
+        end
+
+        def confirm?(input, prompt)
+          return false unless input.respond_to?(:tty?) && input.tty?
+
+          print prompt
+          answer = input.gets.to_s.strip.downcase
+          answer.empty? || answer.start_with?("y")
         end
 
         def print_summary(results)
@@ -67,6 +103,12 @@ module Vkit
               puts "   From: v#{r[:old]}"
               puts "   To:   v#{r[:new]}"
               puts "   Policies updated: #{r[:policies]}"
+
+            when :restored
+              puts "✅ #{r[:name]}: restored #{r[:files].length} missing file(s) at v#{r[:version]}"
+
+            when :missing
+              puts "❌ #{r[:name]}: #{r[:files].length} file(s) missing, not restored"
 
             when :failed
               puts "❌ #{r[:name]}: #{r[:error]}"

@@ -185,10 +185,15 @@ module Vkit
           shipped_version = shipped_meta["version"]
         
           if installed_version == shipped_version
-            return :up_to_date
+            missing = missing_files(pack_name)
+            return :up_to_date if missing.empty?
+
+            return { status: :missing, version: installed_version, files: missing }
           end
         
-          remove!(pack_name, force: force) unless dry_run
+          # Every file is rewritten at the new version, so old ones that are
+          # already gone don't matter.
+          remove!(pack_name, force: true) unless dry_run
         
           count = install!(pack_name, force: force, dry_run: dry_run)
         
@@ -197,6 +202,39 @@ module Vkit
             new_version: shipped_version,
             policies: count
           }
+        end
+
+        # Recorded files of an installed pack that are no longer on disk.
+        def missing_files(pack_name)
+          raise PackNotInstalled, "Pack '#{pack_name}' is not installed" unless installed?(pack_name)
+
+          Array(installed_packs[pack_name]["files"]).reject do |f|
+            File.exist?(File.expand_path(f.fetch("path"), @project_root))
+          end
+        end
+
+        # Rewrites an installed pack's missing files from the shipped pack,
+        # leaving the ones still present (and any edits to them) alone.
+        # Returns the restored file entries.
+        def restore!(pack_name)
+          meta, policies = read_pack!(pack_name)
+          installed_version = installed_packs.dig(pack_name, "version")
+
+          if installed_version != meta["version"]
+            raise Error, "Pack '#{pack_name}' #{installed_version} is installed but this CLI ships " \
+                         "#{meta["version"]}; upgrade it instead"
+          end
+
+          by_id = policies.to_h { |p| [p.fetch("id"), p] }
+
+          missing_files(pack_name).each do |f|
+            policy = by_id[f["policy_id"]]
+            raise InvalidPack, "Pack '#{pack_name}' no longer ships policy '#{f["policy_id"]}'" unless policy
+
+            dest = File.expand_path(f.fetch("path"), @project_root)
+            FileUtils.mkdir_p(File.dirname(dest))
+            File.write(dest, render_policy_file(pack_name, meta, policy))
+          end
         end
 
         def upgrade_all!(force: false, dry_run: false)

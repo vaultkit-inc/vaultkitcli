@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
+require "digest"
+require_relative "../../policy/pack_integrity"
+require_relative "../../policy/bundle_compiler"
 
 module Vkit
   module CLI
@@ -30,20 +33,50 @@ module Vkit
             org_slug = org || derived_org
 
             bundle = JSON.parse(File.read(bundle_path))
+            Vkit::Policy::PackIntegrity.check_bundle!(bundle)
 
-            response = authenticated_client.post(
-              "/api/v1/orgs/#{org_slug}/policy_bundles",
-              body: {
-                bundle: bundle,
-                activate: activate
-              }
-            )
+            response = upload(org_slug, bundle, activate)
 
             puts "🚀 Policy bundle deployed"
             puts "   Org:     #{org_slug}"
             puts "   Version: #{response['bundle_version']}"
             puts "   State:   #{response['state']}"
           end
+        rescue Vkit::Policy::ValidationError => e
+          puts e.message
+          exit 1
+        end
+
+        private
+
+        # A control plane from before vaultkitcli#47 doesn't know installed_packs'
+        # policy_ids and rejects the bundle on schema. The ids were checked
+        # above, so send the bundle without them (re-checksummed) instead.
+        def upload(org_slug, bundle, activate)
+          post_bundle(org_slug, bundle, activate)
+        rescue Vkit::CLI::API::APIError => e
+          raise unless e.status == 422 && e.error.to_s.match?(%r{installed_packs/\d+/policy_ids})
+
+          warn "ℹ️  This control plane predates per-pack policy checks; deploying without them."
+          post_bundle(org_slug, without_policy_ids(bundle), activate)
+        end
+
+        def post_bundle(org_slug, bundle, activate)
+          authenticated_client.post(
+            "/api/v1/orgs/#{org_slug}/policy_bundles",
+            body: {
+              bundle: bundle,
+              activate: activate
+            }
+          )
+        end
+
+        def without_policy_ids(bundle)
+          copy = JSON.parse(JSON.generate(bundle))
+          Array(copy.dig("bundle", "installed_packs")).each { |p| p.delete("policy_ids") }
+          copy["bundle"]["checksum"] = ""
+          copy["bundle"]["checksum"] = Digest::SHA256.hexdigest(Vkit::Policy::BundleCompiler.canonical_json(copy))
+          copy
         end
       end
     end

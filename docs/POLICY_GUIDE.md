@@ -165,6 +165,16 @@ Before relying on a pack:
 - **Agents match `requester_role: agent`,** the default role for agent tokens.
   Tokens created with another role don't.
 
+An installed pack's files (`config/policies/<pack>__NN__<id>.yaml`) are yours
+to edit, but keep them, with their ids. `.vkit/packs.yaml` records each one,
+and `vkit policy bundle` fails if one is missing, has another policy id, or is
+from another version of the pack than the one installed. The bundle records
+each pack's policy ids, and `vkit policy deploy` and the control plane refuse
+a bundle that leaves one out. To get deleted files back, run
+`vkit policy pack upgrade <pack>`: it lists them and offers to restore them
+(`--restore` restores without asking). Every bundle prints how many policies
+each pack and the repo contribute.
+
 ---
 
 ## Example
