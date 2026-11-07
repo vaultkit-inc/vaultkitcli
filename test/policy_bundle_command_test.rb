@@ -11,6 +11,7 @@ require_relative "../lib/vkit/cli/commands/policy_bundle_command"
 require_relative "../lib/vkit/cli/commands/policy_deploy_command"
 require_relative "../lib/vkit/cli/commands/policy_validate_command"
 require_relative "../lib/vkit/cli/policy_pack/manager"
+require_relative "support/shipped_packs"
 
 # `vkit policy bundle`, `validate` and `deploy` in a repo with all three packs
 # and one repo policy.
@@ -115,10 +116,11 @@ class PolicyBundleCommandTest < Minitest::Test
 
     assert_nil status
     assert_includes out, "✅ Policy bundle created"
-    assert_includes out, "Policies: 12"
-    assert_match(/starter 2\.0\.0\s+6$/, out)
-    assert_match(/ai_safety 2\.0\.0\s+3$/, out)
-    assert_match(/financial_compliance 2\.0\.0\s+2$/, out)
+    packs = %w[starter ai_safety financial_compliance]
+    assert_includes out, "Policies: #{ShippedPacks.total(packs) + 1}"
+    packs.each do |pack|
+      assert_match(/#{pack} #{Regexp.escape(ShippedPacks.version(pack))}\s+#{ShippedPacks.policy_count(pack)}$/, out)
+    end
     assert_match(%r{repo \(config/policies\)\s+1$}, out)
   end
 
@@ -128,7 +130,7 @@ class PolicyBundleCommandTest < Minitest::Test
     out, status = bundle
 
     assert_equal 1, status
-    assert_includes out, "starter 2.0.0:"
+    assert_includes out, "starter #{ShippedPacks.version("starter")}:"
     assert_includes out, "missing config/policies/starter__01__deny_credentials.yaml (deny_credentials)"
     refute_includes out, "Policy bundle created"
     refute File.exist?(File.join(@dir, "dist", "policy_bundle.json"))

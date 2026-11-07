@@ -7,10 +7,12 @@ require "yaml"
 require "json"
 require_relative "../lib/vkit/policy/bundle_compiler"
 require_relative "../lib/vkit/cli/policy_pack/manager"
+require_relative "support/shipped_packs"
 
 class PackIntegrityTest < Minitest::Test
   Compiler = Vkit::Policy::BundleCompiler
   PACKS = %w[starter ai_safety financial_compliance].freeze
+  STARTER = ShippedPacks.version("starter")
 
   REGISTRY = {
     "customers" => {
@@ -76,20 +78,20 @@ class PackIntegrityTest < Minitest::Test
     ids = bundle["policies"].map { |p| p["id"] }
     packs = bundle.dig("bundle", "installed_packs")
 
-    assert_equal 12, ids.length
+    assert_equal ShippedPacks.total(PACKS) + 1, ids.length
     assert_includes ids, "deny_credentials"
     assert_includes ids, "allow_support_reads"
     assert_equal PACKS.sort, packs.map { |p| p["name"] }.sort
     starter = packs.find { |p| p["name"] == "starter" }
-    assert_equal "2.0.0", starter["version"]
-    assert_equal 6, starter["policy_ids"].length
+    assert_equal STARTER, starter["version"]
+    assert_equal ShippedPacks.policy_count("starter"), starter["policy_ids"].length
     assert_includes starter["policy_ids"], "deny_credentials"
   end
 
   def test_a_deleted_pack_file_fails_naming_the_pack_and_file
     File.delete(pack_file("starter", "deny_credentials"))
 
-    error = assert_bundle_fails(/starter 2\.0\.0:/)
+    error = assert_bundle_fails(/starter #{Regexp.escape(STARTER)}:/)
     assert_match %r{missing config/policies/starter__01__deny_credentials\.yaml \(deny_credentials\)}, error.message
     refute_match(/ai_safety/, error.message)
   end
@@ -98,15 +100,17 @@ class PackIntegrityTest < Minitest::Test
     Dir[File.join(policies_dir, "*__*.yaml")].each { |f| File.delete(f) }
 
     error = assert_bundle_fails(/incomplete/)
-    PACKS.each { |pack| assert_match(/^  #{pack} 2\.0\.0:/, error.message) }
-    assert_equal 11, error.message.scan(/    - missing /).length
+    PACKS.each { |pack| assert_match(/^  #{pack} #{Regexp.escape(ShippedPacks.version(pack))}:/, error.message) }
+    assert_equal ShippedPacks.total(PACKS), error.message.scan(/    - missing /).length
   end
 
   def test_a_pack_file_from_another_version_fails
     path = pack_file("starter", "mask_pii_by_default")
-    File.write(path, File.read(path).sub("# Pack Version: 2.0.0", "# Pack Version: 1.4.0"))
+    edited = File.read(path).sub("# Pack Version: #{STARTER}", "# Pack Version: 1.4.0")
+    refute_equal File.read(path), edited, "the pack file should carry a version header"
+    File.write(path, edited)
 
-    assert_bundle_fails(/starter__02__mask_pii_by_default\.yaml is from version 1\.4\.0, but 2\.0\.0 is installed/)
+    assert_bundle_fails(/starter__02__mask_pii_by_default\.yaml is from version 1\.4\.0, but #{Regexp.escape(STARTER)} is installed/)
   end
 
   def test_a_tracking_file_that_lost_entries_fails
@@ -114,7 +118,8 @@ class PackIntegrityTest < Minitest::Test
     state["installed_packs"]["starter"]["files"].shift
     File.write(File.join(@dir, ".vkit", "packs.yaml"), state.to_yaml)
 
-    assert_bundle_fails(/records 5 of the pack's 6 policies \(not recorded: deny_credentials\)/)
+    count = ShippedPacks.policy_count("starter")
+    assert_bundle_fails(/records #{count - 1} of the pack's #{count} policies \(not recorded: deny_credentials\)/)
   end
 
   def test_a_pack_file_whose_policy_id_changed_fails
@@ -165,7 +170,7 @@ class PackIntegrityTest < Minitest::Test
     bundle["bundle"]["installed_packs"].each { |p| p.delete("policy_ids") }
 
     error = assert_raises(Vkit::Policy::ValidationError) { Vkit::Policy::PackIntegrity.check_bundle!(bundle) }
-    assert_match(/starter 2\.0\.0:\n    - missing policies: deny_credentials/, error.message)
+    assert_match(/starter #{Regexp.escape(STARTER)}:\n    - missing policies: deny_credentials/, error.message)
   end
 
   def test_check_bundle_catches_a_new_bundle_without_a_pack_policy
