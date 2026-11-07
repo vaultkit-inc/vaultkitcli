@@ -1,4 +1,6 @@
+require "json"
 require_relative "../policy_bundle_validator"
+require_relative "../../policy/pack_integrity"
 
 module Vkit
   module CLI
@@ -16,8 +18,12 @@ module Vkit
           )
         
           validator.validate!(bundle_path)
+          Vkit::Policy::PackIntegrity.check_bundle!(JSON.parse(File.read(bundle_path)))
         
           puts "✅ Policy bundle is valid"
+        rescue Vkit::Policy::ValidationError => e
+          puts e.message
+          exit 1
         end        
 
         private

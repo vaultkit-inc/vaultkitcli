@@ -6,15 +6,18 @@ require_relative "policy_validator"
 require_relative "match_check"
 require_relative "tenancy_check"
 require_relative "validation_error"
+require_relative "pack_integrity"
 
 module Vkit
   module Policy
     class BundleCompiler
       FORMAT_VERSION = "v1"
 
-      # Raises if a policy can never match (see MatchCheck).
-      def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {})
+      # Raises if a policy can never match (see MatchCheck), or if an
+      # installed pack is missing policies (see PackIntegrity).
+      def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {}, project_root: Dir.pwd)
         policies = load_policies(policies_dir)
+        installed_packs = PackIntegrity.check!(project_root: project_root, policies_dir: policies_dir, policies: policies)
         raw_registry = load_raw_registry(registry_dir)
         registry = normalize_registry(raw_registry)
         check_matches!(policies, registry, raw_registry)
@@ -33,7 +36,7 @@ module Vkit
           "signing" => nil
         }
 
-        bundle["bundle"]["installed_packs"] = load_installed_packs
+        bundle["bundle"]["installed_packs"] = installed_packs
         canonical = canonical_json(bundle)
         bundle["bundle"]["checksum"] = Digest::SHA256.hexdigest(canonical)
 
@@ -51,7 +54,7 @@ module Vkit
 
           PolicyValidator.validate!(data, file: File.basename(f))
 
-          data.merge("__file" => File.basename(f))
+          data.merge("__file" => File.basename(f), "__path" => File.expand_path(f))
         end
       end
 
@@ -212,23 +215,6 @@ module Vkit
           value
         end
       end
-
-      def self.load_installed_packs
-        tracking_path = File.join(".vkit", "packs.yaml")
-        return [] unless File.exist?(tracking_path)
-      
-        data = YAML.safe_load(File.read(tracking_path), permitted_classes: [], permitted_symbols: [], aliases: true)
-        packs = data["installed_packs"] || {}
-      
-        packs.map do |name, meta|
-          {
-            "name" => name,
-            "version" => meta["version"]
-          }
-        end
-      rescue
-        []
-      end      
     end
   end
 end

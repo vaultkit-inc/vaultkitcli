@@ -299,11 +299,14 @@ module Vkit
           desc "upgrade [NAME]", "Upgrade installed policy packs (all if NAME omitted)"
           option :dir, type: :string, default: "."
           option :force, type: :boolean, default: false
+          option :restore, type: :boolean, default: false,
+                           desc: "Restore an up-to-date pack's missing files without asking"
           def upgrade(name = nil)
             Commands::PolicyPackUpgradeCommand.new.call(
               pack_name: name,
               dir: options[:dir],
-              force: options[:force]
+              force: options[:force],
+              restore: options[:restore]
             )
           end
         }

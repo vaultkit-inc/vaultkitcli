@@ -58,6 +58,7 @@ module Vkit
             puts "   Version:  #{bundle.dig("bundle", "bundle_version")}"
             puts "   Checksum: #{bundle.dig("bundle", "checksum")}"
             puts "   Output:   #{out}"
+            print_policy_summary(bundle, policies_dir)
           end
         rescue Vkit::Policy::ValidationError => e
           puts e.message
@@ -65,6 +66,24 @@ module Vkit
         end
 
         private
+
+        # Per-pack counts on every bundle, so a pack that contributes nothing
+        # is visible even when nothing errors.
+        def print_policy_summary(bundle, policies_dir)
+          total = bundle["policies"].length
+          packs = Array(bundle.dig("bundle", "installed_packs"))
+          from_packs = packs.sum { |p| Array(p["policy_ids"]).length }
+          rows = packs.map { |p| ["#{p["name"]} #{p["version"]}", Array(p["policy_ids"]).length] }
+          rows << ["repo (#{relative(policies_dir)})", total - from_packs]
+          width = rows.map { |label, _| label.length }.max
+
+          puts "   Policies: #{total}"
+          rows.each { |label, count| puts "     #{label.ljust(width)}  #{count}" }
+        end
+
+        def relative(path)
+          path.delete_prefix(Dir.pwd + File::SEPARATOR)
+        end
 
         def git_sha
           out = `git rev-parse HEAD 2>/dev/null`.strip
