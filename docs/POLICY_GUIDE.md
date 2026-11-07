@@ -15,7 +15,8 @@ policies see as a tag. `vkit scan` suggests labels; review them before deploying
 
 `unknown` means the scanner couldn't place a column that could hold anything,
 such as `payload` (jsonb) or `notes` (text). Give it a real label once you know
-what it holds. A rescan replaces an `unknown` label, but keeps labels you've set.
+what it holds. Until then, the `starter` pack masks it for agents. A rescan
+replaces an `unknown` label, but keeps labels you've set.
 
 `vkit policy bundle` rejects a policy that can never match, for example one that
 uses a tag no field can have.
@@ -152,8 +153,8 @@ Packs are ready-made policies. `vkit init` installs `starter`; add others with
 
 | Pack | What it does |
 |---|---|
-| `starter` | Denies credentials. Masks personal data and high-sensitivity fields, also after approval. High-sensitivity data in production needs approval from `data_owner`. `unknown` columns are allowed but flagged: the decision records why, so they show up in the audit log. Other grants last 4 hours. |
-| `ai_safety` | Agents need approval from `security` for personal, financial or `unknown` data in production, and for high-sensitivity data in any environment. |
+| `starter` | Denies credentials. Masks personal data and high-sensitivity fields, also after approval. High-sensitivity data in production needs approval from `data_owner`. `unknown` columns are masked (`full`) for agents in every environment until someone reviews them; people can read them, and the decision records why, so they show up in the audit log. Other grants last 4 hours. |
+| `ai_safety` | Agents need approval from `security` for personal, financial or `unknown` data in production, and for high-sensitivity data in any environment. With `starter`, approved `unknown` columns still come back masked. |
 | `financial_compliance` | Financial data in production needs approval from `finance_manager`, and grants with financial fields last 30 minutes. |
 
 Before relying on a pack:

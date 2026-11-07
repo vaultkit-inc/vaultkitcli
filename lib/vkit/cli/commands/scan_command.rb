@@ -60,6 +60,7 @@ module Vkit
               end
 
               print_suggestions(dataset)
+              print_unreviewed(dataset)
 
               puts
             end
@@ -78,6 +79,8 @@ module Vkit
             puts "    datasets/registry.yaml and redeploy the bundle."
           end
 
+          print_unreviewed_note(datasets)
+
           puts
           puts "  ✅ Applied" if response["applied"]
         end
@@ -85,6 +88,28 @@ module Vkit
         def print_clean(dataset)
           puts "  #{dataset["name"].ljust(24)} ✓"
           print_suggestions(dataset)
+          print_unreviewed(dataset)
+        end
+
+        # Columns still labelled unknown. Older control planes don't send them.
+        # The starter pack masks them for agents until someone reviews them.
+        def print_unreviewed(dataset)
+          names = unreviewed_for(dataset)
+          puts "    ! unreviewed: #{names.join(", ")}" if names.any?
+        end
+
+        def print_unreviewed_note(datasets)
+          count = datasets.sum { |d| unreviewed_for(d).size }
+          return if count.zero?
+
+          puts
+          puts "  ⚠️  #{count} #{count == 1 ? "column is" : "columns are"} unreviewed and masked until you review them"
+          puts "     (for agents, under the starter pack). To review, set each one's sensitivity"
+          puts "     in datasets/registry.yaml, then run: vkit policy bundle && vkit policy deploy"
+        end
+
+        def unreviewed_for(dataset)
+          Array(dataset["unreviewed"])
         end
 
         def print_suggestions(dataset)

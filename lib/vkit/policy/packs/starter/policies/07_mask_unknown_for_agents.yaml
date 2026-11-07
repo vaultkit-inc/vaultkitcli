@@ -1,0 +1,18 @@
+id: mask_unknown_for_agents
+description: Mask columns nobody has reviewed yet when an agent reads them, in every environment, until someone gives them a real label.
+priority: 84
+
+match:
+  fields:
+    sensitivity: unknown
+
+context:
+  requester_role: agent
+
+action:
+  mask: true
+  reason: This column hasn't been reviewed, so it's masked for agents. Give it a sensitivity in datasets/registry.yaml and redeploy the bundle.
+  ttl: 1h
+
+masking:
+  default_method: full
