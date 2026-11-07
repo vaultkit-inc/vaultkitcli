@@ -9,6 +9,7 @@ require_relative "../lib/vkit/cli/commands/base_command"
 require_relative "../lib/vkit/policy/policy_validator"
 require_relative "../lib/vkit/cli/policy_pack/manager"
 require_relative "../lib/vkit/cli/commands/policy_pack_upgrade_command"
+require_relative "support/shipped_packs"
 
 class PolicyPackUpgradeCommandTest < Minitest::Test
   def setup
@@ -83,7 +84,7 @@ class PolicyPackUpgradeCommandTest < Minitest::Test
 
     assert_equal 1, status
     refute_includes out, "already up to date"
-    assert_includes out, "starter 2.0.0 is installed, but 1 of its files are missing"
+    assert_includes out, "starter #{ShippedPacks.version("starter")} is installed, but 1 of its files are missing"
     assert_includes out, "config/policies/starter__01__deny_credentials.yaml (deny_credentials)"
     assert_includes out, "--restore"
     refute File.exist?(deny_credentials_path)
@@ -97,9 +98,9 @@ class PolicyPackUpgradeCommandTest < Minitest::Test
     out, status = run_upgrade(pack_name: "starter", restore: true)
 
     assert_nil status
-    assert_includes out, "✅ starter: restored 1 missing file(s) at v2.0.0"
+    assert_includes out, "✅ starter: restored 1 missing file(s) at v#{ShippedPacks.version("starter")}"
     assert_includes File.read(deny_credentials_path), "id: deny_credentials"
-    assert_includes File.read(deny_credentials_path), "# Pack Version: 2.0.0"
+    assert_includes File.read(deny_credentials_path), "# Pack Version: #{ShippedPacks.version("starter")}"
     assert_includes File.read(mask), "# my edit"
   end
 
