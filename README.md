@@ -740,6 +740,26 @@ vkit scan production_pg
 
 To accept a suggestion, change the field's sensitivity and tags in `datasets/registry.yaml`, then build and deploy the bundle. Control planes that predate suggestions don't send them, and the output is unchanged.
 
+**Unreviewed Columns:**
+
+Columns the classifier couldn't place keep the `unknown` sensitivity until someone reviews them. The `starter` pack (2.1.0 and later) masks them for agents, so the scan lists them under their dataset, marked `!`, and counts them:
+
+```bash
+vkit scan production_pg
+
+# Output:
+#   customers                ✓
+#     ! unreviewed: notes, meta
+#
+#   No changes detected
+#
+#   ⚠️  2 columns are unreviewed and masked until you review them
+#      (for agents, under the starter pack). To review, set each one's sensitivity
+#      in datasets/registry.yaml, then run: vkit policy bundle && vkit policy deploy
+```
+
+Older control planes don't send unreviewed columns, and the output is unchanged.
+
 **Apply Changes:**
 ```bash
 vkit scan production_pg --mode apply

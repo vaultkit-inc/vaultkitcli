@@ -95,4 +95,41 @@ class ScanCommandDiffTest < Minitest::Test
 
     assert_includes out, "? key_value  low → high/credential (suggested)"
   end
+
+  def test_counts_unreviewed_columns_across_datasets_and_says_how_to_review
+    out = print_diff({
+      "diff" => {
+        "datasets" => [
+          { "name" => "customers", "changes" => no_changes, "unreviewed" => %w[notes meta] },
+          {
+            "name" => "audit_events",
+            "changes" => no_changes.merge("added_fields" => [{ "name" => "payload", "type" => "jsonb" }]),
+            "unreviewed" => ["payload"]
+          },
+          { "name" => "orders", "changes" => no_changes, "unreviewed" => [] }
+        ]
+      }
+    })
+
+    assert_includes out, "! unreviewed: notes, meta"
+    assert_includes out, "! unreviewed: payload"
+    assert_includes out, "3 columns are unreviewed and masked until you review them"
+    assert_includes out, "vkit policy bundle && vkit policy deploy"
+  end
+
+  def test_one_unreviewed_column_reads_in_the_singular
+    out = print_diff({
+      "diff" => { "datasets" => [{ "name" => "customers", "changes" => no_changes, "unreviewed" => ["notes"] }] }
+    })
+
+    assert_includes out, "1 column is unreviewed and masked until you review them"
+  end
+
+  def test_no_unreviewed_note_without_unreviewed_columns_or_from_older_control_planes
+    out = print_diff({
+      "diff" => { "datasets" => [{ "name" => "customers", "changes" => no_changes }] }
+    })
+
+    refute_includes out, "unreviewed"
+  end
 end
