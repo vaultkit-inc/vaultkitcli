@@ -43,10 +43,42 @@ module Vkit
             puts
 
             puts "⚠️  Store this token securely. It cannot be retrieved again."
+
+            warn_if_tenant_scoped(org) unless token["tenant"]
           end
         end
 
         private
+
+        WARNING_NAMES = 5
+
+        # A token with no tenant can't read a tenant-scoped dataset at all:
+        # VaultKit answers it as if the dataset didn't exist. Say so when the
+        # org has any, so the operator isn't left guessing why.
+        def warn_if_tenant_scoped(org)
+          names = tenant_scoped_datasets(org)
+          return if names.empty?
+
+          shown = names.first(WARNING_NAMES).join(", ")
+          shown += ", and #{names.size - WARNING_NAMES} more" if names.size > WARNING_NAMES
+          count = names.size == 1 ? "1 dataset is" : "#{names.size} datasets are"
+
+          puts
+          puts "⚠️  This token has no tenant, and #{count} tenant-scoped in #{org}: #{shown}."
+          puts "   VaultKit answers its requests for them as if they didn't exist (\"Dataset not found\")."
+          puts "   To read them, create a token for one tenant with --tenant."
+        end
+
+        # Names of datasets with a tenant column, from the registry export.
+        # Nothing if the export can't be read: the token is already issued.
+        def tenant_scoped_datasets(org)
+          registry = authenticated_client.get("/api/v1/orgs/#{org}/registries/export")
+          return [] unless registry.is_a?(Hash)
+
+          registry.select { |_name, ds| ds.is_a?(Hash) && !ds["tenant_column"].to_s.empty? }.keys.sort
+        rescue StandardError
+          []
+        end
 
         def build_body(options)
           body = {

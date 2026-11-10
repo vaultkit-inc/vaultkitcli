@@ -47,9 +47,9 @@ end
 class AgentTokensCreateTest < Minitest::Test
   include AgentTokenTestHelpers
 
-  def create(acts_for: nil, **options)
-    token = TOKEN.merge("label" => options[:label], "acts_for" => acts_for)
-    client = FakeClient.new(post: { "token" => token, "secret" => "s3cret" })
+  def create(acts_for: nil, registry: {}, **options)
+    token = TOKEN.merge("label" => options[:label], "acts_for" => acts_for, "tenant" => options[:tenant])
+    client = FakeClient.new(get: registry, post: { "token" => token, "secret" => "s3cret" })
     out, = capture_io { wire(Vkit::CLI::Commands::AgentTokensCreateCommand.new, client).call(name: "incident-bot", **options) }
     [out, client]
   end
@@ -81,6 +81,56 @@ class AgentTokensCreateTest < Minitest::Test
 
     refute client.posts.first.last.key?(:user_email)
     assert_includes out, "Acts for:   no one"
+  end
+end
+
+class AgentTokensTenantWarningTest < Minitest::Test
+  include AgentTokenTestHelpers
+
+  SCOPED = {
+    "payments" => { "datasource" => "northstar", "tenant_column" => "organization_id", "fields" => {} },
+    "invoices" => { "datasource" => "northstar", "tenant_column" => "organization_id", "fields" => {} },
+    "plans" => { "datasource" => "northstar", "fields" => {} }
+  }.freeze
+
+  def create(registry:, client_class: FakeClient, **options)
+    token = TOKEN.merge("tenant" => options[:tenant])
+    client = client_class.new(get: registry, post: { "token" => token, "secret" => "s3cret" })
+    out, = capture_io { wire(Vkit::CLI::Commands::AgentTokensCreateCommand.new, client).call(name: "incident-bot", **options) }
+    out
+  end
+
+  def test_warns_when_a_token_without_a_tenant_meets_tenant_scoped_datasets
+    out = create(registry: SCOPED)
+
+    assert_includes out, "This token has no tenant, and 2 datasets are tenant-scoped in acme: invoices, payments."
+    assert_includes out, "as if they didn't exist"
+    assert_includes out, "--tenant"
+  end
+
+  def test_names_only_the_first_few
+    registry = (1..8).to_h { |i| ["ds#{i}", { "tenant_column" => "org_id" }] }
+
+    assert_includes create(registry: registry), "8 datasets are tenant-scoped in acme: ds1, ds2, ds3, ds4, ds5, and 3 more."
+  end
+
+  def test_no_warning_with_a_tenant
+    refute_includes create(registry: SCOPED, tenant: "org_1"), "no tenant"
+  end
+
+  def test_no_warning_without_tenant_scoped_datasets
+    refute_includes create(registry: { "plans" => { "fields" => {} } }), "no tenant"
+  end
+
+  class FailingExport < FakeClient
+    def get(*) = raise("403 Forbidden")
+  end
+
+  def test_still_issues_the_token_when_the_registry_cannot_be_read
+    out = create(registry: SCOPED, client_class: FailingExport)
+
+    assert_includes out, "s3cret"
+    refute_includes out, "no tenant"
   end
 end
 
