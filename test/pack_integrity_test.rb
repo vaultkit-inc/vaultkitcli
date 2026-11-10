@@ -178,7 +178,8 @@ class PackIntegrityTest < Minitest::Test
     bundle["policies"].reject! { |p| p["id"].start_with?("ai_") }
 
     error = assert_raises(Vkit::Policy::ValidationError) { Vkit::Policy::PackIntegrity.check_bundle!(bundle) }
-    assert_match(/ai_safety 2\.0\.0:\n    - missing policies: ai_require_approval_agents/, error.message)
+    assert_match(/ai_safety #{Regexp.escape(ShippedPacks.version("ai_safety"))}:\n    - missing policies: ai_require_approval_agents/,
+                 error.message)
   end
 
   def test_check_bundle_accepts_a_complete_bundle_and_unknown_pack_versions

@@ -1,10 +1,11 @@
 id: fin_require_approval_financial_prod
-description: A finance manager approves requests for financial data in production.
+description: A finance manager approves reading financial data row by row in production. Counts, sums, averages and grouping need no approval; MIN and MAX return a single value, so they do.
 priority: 2100
 
 match:
   fields:
     contains: [financial]
+    usage: row
 
 context:
   environment: production
@@ -12,5 +13,5 @@ context:
 action:
   require_approval: true
   approver_role: finance_manager
-  reason: Financial data in production needs finance approval.
+  reason: Reading financial data row by row in production needs finance approval.
   ttl: 30m

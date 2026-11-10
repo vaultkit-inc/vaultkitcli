@@ -121,9 +121,15 @@ module Vkit
         "allow"
       end
 
+      # One group stays approver_role, as older control planes read it;
+      # several become approver_roles with their approval_mode.
       def self.extract_approval(p)
         return unless p.dig("action", "require_approval")
-        { "approver_role" => p.dig("action", "approver_role") }
+
+        roles = p.dig("action", "approver_roles")
+        return { "approver_role" => p.dig("action", "approver_role") } unless roles
+
+        { "approver_roles" => roles, "approval_mode" => p.dig("action", "approval_mode") || "all" }
       end
 
       def self.extract_masking(p)

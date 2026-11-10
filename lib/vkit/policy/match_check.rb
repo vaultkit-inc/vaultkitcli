@@ -19,7 +19,10 @@ module Vkit
       SENSITIVITIES = %w[high medium low unknown].freeze
 
       MATCH_KEYS = %w[dataset fields context].freeze
-      FIELD_KEYS = %w[any all contains sensitivity].freeze
+      FIELD_KEYS = %w[any all contains sensitivity usage].freeze
+      # row: the query reads the field value by value (or MIN/MAX of it);
+      # aggregate: it only counts, sums, averages or groups by it.
+      USAGES = %w[row aggregate].freeze
       CONTEXT_KEYS = %w[environment dataset_region requester_role requester_region requester_clearance time].freeze
       ENVIRONMENTS = %w[production staging development sandbox].freeze
       REGIONS = %w[EU US CA APAC].freeze
@@ -85,6 +88,9 @@ module Vkit
         problems << "no field has the tag #{unknown.join(', ')}. Known tags: #{@tags.to_a.sort.join(', ')}" if unknown.any?
         if fields.key?("sensitivity") && !@sensitivities.include?(fields["sensitivity"].to_s)
           problems << "sensitivity #{fields['sensitivity']} never occurs. Use one of: #{@sensitivities.to_a.join(', ')}"
+        end
+        if fields.key?("usage") && !USAGES.include?(fields["usage"].to_s)
+          problems << "match.fields.usage #{fields['usage']} isn't one of: #{USAGES.join(', ')}"
         end
         problems
       end

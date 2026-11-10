@@ -1,10 +1,10 @@
 id: ai_require_approval_agents_sensitive_prod
-description: Agents need security approval for personal or financial data in production.
+description: Agents need security approval for personal data in production. Financial data is 04_require_approval_agents_financial_prod.
 priority: 1200
 
 match:
   fields:
-    contains: [pii, financial]
+    contains: [pii]
 
 context:
   environment: production
@@ -13,5 +13,5 @@ context:
 action:
   require_approval: true
   approver_role: security
-  reason: Agents reading personal or financial data in production need security review.
+  reason: Agents reading personal data in production need security review.
   ttl: 1h
