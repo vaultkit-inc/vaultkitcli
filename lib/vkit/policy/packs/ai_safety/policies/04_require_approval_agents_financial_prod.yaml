@@ -1,0 +1,23 @@
+id: ai_require_approval_agents_financial_prod
+description: >-
+  Agents need a person's review to read financial data row by row in production,
+  from security or a finance manager. With financial_compliance installed, the
+  finance manager it already asks for meets this too, so one sign-off covers both.
+  Counts, sums, averages and grouping need no approval.
+priority: 1250
+
+match:
+  fields:
+    contains: [financial]
+    usage: row
+
+context:
+  environment: production
+  requester_role: agent
+
+action:
+  require_approval: true
+  approver_roles: [security, finance_manager]
+  approval_mode: any
+  reason: Agents reading financial data row by row in production need review by security or a finance manager.
+  ttl: 1h

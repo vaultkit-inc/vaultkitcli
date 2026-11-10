@@ -1,8 +1,8 @@
 __pack_meta:
   name: financial_compliance
-  version: "2.0.0"
+  version: "2.1.0"
   layer: 40
-  description: "Finance approval for financial data in production, and short-lived grants for financial fields."
+  description: "Finance approval for reading financial data row by row in production (totals and averages need none), and short-lived grants for financial fields."
   dependencies:
     - starter
   priority_band:

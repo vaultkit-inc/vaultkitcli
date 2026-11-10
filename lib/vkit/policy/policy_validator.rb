@@ -80,7 +80,7 @@ module Vkit
 
         when "require_approval"
           require_reason!(action, prefix)
-          require_string!(action, "approver_role", prefix)
+          validate_approvers!(action, prefix)
 
         when "mask"
           # masking is optional, but if present must be valid
@@ -91,6 +91,59 @@ module Vkit
         end
 
         validate_ttl!(action["ttl"], prefix) if action.key?("ttl")
+      end
+
+      APPROVAL_MODES = %w[all any].freeze
+
+      # One group (approver_role), or several (approver_roles) with
+      # approval_mode: all (the default, every group signs off) or any (one
+      # of them does).
+      def self.validate_approvers!(action, prefix)
+        single = action["approver_role"]
+        several = action["approver_roles"]
+
+        if single && several
+          raise ValidationError, <<~MSG
+            #{prefix}Set approver_role or approver_roles, not both.
+          MSG
+        end
+
+        if several.nil?
+          require_string!(action, "approver_role", prefix)
+          if action.key?("approval_mode")
+            raise ValidationError, <<~MSG
+              #{prefix}approval_mode only applies to approver_roles (several groups).
+            MSG
+          end
+          return
+        end
+
+        unless several.is_a?(Array) && several.any? && several.all? { |r| r.is_a?(String) && !r.strip.empty? }
+          raise ValidationError, <<~MSG
+            #{prefix}approver_roles must be a list of approver group names.
+
+            Example:
+
+              action:
+                require_approval: true
+                approver_roles: [security, data_owner]
+                approval_mode: any
+          MSG
+        end
+
+        if several.uniq.size != several.size
+          raise ValidationError, "#{prefix}approver_roles lists a group more than once.\n"
+        end
+
+        mode = action.fetch("approval_mode", "all")
+        return if APPROVAL_MODES.include?(mode.to_s)
+
+        raise ValidationError, <<~MSG
+          #{prefix}approval_mode must be all (every group signs off) or any (one of them does).
+
+          Got:
+            approval_mode: #{mode.inspect}
+        MSG
       end
 
       def self.require_reason!(action, prefix)

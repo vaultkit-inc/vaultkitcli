@@ -37,6 +37,9 @@ match:                             # OPTIONAL: which data this policy applies to
     contains: [<tag>, <tag>]       # a requested field has ANY of these tags
     any: [field1, field2]          # ANY of these fields is requested
     all: [field1, field2]          # required as well: ALL of these are requested
+    usage: row | aggregate         # OPTIONAL: only fields read value by value (row,
+                                   # MIN/MAX included) or only counted, summed,
+                                   # averaged or grouped by (aggregate)
 
   context:                         # OPTIONAL: like `context` below, plus time
     time:
@@ -57,7 +60,9 @@ action:                            # REQUIRED: exactly one of these is true
   mask: true
   allow: true
 
-  approver_role: <group>           # REQUIRED with require_approval
+  approver_role: <group>           # REQUIRED with require_approval: one group, or
+  approver_roles: [<group>, ...]   # several groups, with
+  approval_mode: all | any         # all (default): each signs off; any: one does
   reason: <string>                 # REQUIRED with deny and require_approval
   ttl: "1h"                        # OPTIONAL: how long the grant lasts
 
