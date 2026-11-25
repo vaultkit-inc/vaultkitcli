@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "approval_groups"
+
 module Vkit
   module Policy
     class PolicyValidator
@@ -95,12 +97,30 @@ module Vkit
 
       APPROVAL_MODES = %w[all any].freeze
 
+      # admin, member, approver and agent are built-in roles, not approval
+      # groups (the control plane refuses them too).
+      def self.validate_not_reserved!(names, prefix)
+        reserved = names.map { |n| n.to_s.strip } & ApprovalGroups::RESERVED
+        return if reserved.empty?
+
+        raise ValidationError, <<~MSG
+          #{prefix}#{reserved.join(', ')} #{reserved.size == 1 ? 'is a built-in role' : 'are built-in roles'}, not an approval group.
+
+          Name an approval group instead (admins can already approve any request), for example:
+
+            action:
+              require_approval: true
+              approver_role: data_owner
+        MSG
+      end
+
       # One group (approver_role), or several (approver_roles) with
       # approval_mode: all (the default, every group signs off) or any (one
       # of them does).
       def self.validate_approvers!(action, prefix)
         single = action["approver_role"]
         several = action["approver_roles"]
+        validate_not_reserved!([single, *Array(several)], prefix)
 
         if single && several
           raise ValidationError, <<~MSG

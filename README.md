@@ -851,6 +851,8 @@ vkit policy deploy --bundle <BUNDLE_FILE> [OPTIONS]
 - `--bundle` — Path to bundle file (required)
 - `--org` — Organization identifier (optional, defaults to logged-in user's org)
 - `--activate` — Immediately activate bundle
+- `--format` — `human` (default) or `json`. Both include a warning for each approval
+  group nobody is in, whose requests org admins approve until someone is added.
 - `--dry-run` — Validate deployment without activating
 
 **Examples:**

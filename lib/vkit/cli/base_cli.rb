@@ -232,12 +232,15 @@ module Vkit
         option :bundle, type: :string, default: "dist/policy_bundle.json"
         option :org, type: :string
         option :activate, type: :boolean, default: true
+        option :format, type: :string, default: "human", enum: %w[human json],
+                        desc: "Output format (human, or json for automations)"
 
         def deploy
           Commands::PolicyDeployCommand.new.call(
             bundle_path: options[:bundle],
             org: options[:org],
-            activate: options[:activate]
+            activate: options[:activate],
+            format: options[:format]
           )
         end
 
