@@ -57,6 +57,10 @@
             "commit_sha": {
               "type": "string",
               "pattern": "^[a-f0-9]{7,40}$"
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the bundle was built from uncommitted changes (vkit policy bundle --allow-dirty), so commit_sha doesn't contain all of it."
             }
           }
         },
