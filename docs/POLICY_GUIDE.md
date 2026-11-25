@@ -141,7 +141,9 @@ When several policies match, the strongest action wins, whatever their priority:
 | 0       | allow              |
 
 When several approval policies match, every one of their approver groups must
-sign off, and the shortest TTL applies. Masking from every matching mask policy
+sign off, and the shortest TTL applies. `admin`, `member`, `approver` and
+`agent` are built-in roles, so `vkit policy bundle` and the control plane refuse
+them as approver groups; admins can already approve any request. Masking from every matching mask policy
 is combined. With no matching policy, a request is allowed.
 
 Masking combines every mask policy that matches, with the requester's context;
@@ -165,7 +167,14 @@ Packs are ready-made policies. `vkit init` installs `starter`; add others with
 Before relying on a pack:
 
 - **Create its approval groups** (`data_owner`, `security`, `finance_manager`) and
-  add people to them. Until then, only admins can approve.
+  add people to them. Until a group has an active member, org admins approve for
+  it, and `vkit policy deploy` warns about each such group. One admin's approval
+  signs every group a request needs that has no members, so a rule needing two
+  empty groups (`approver_roles` with `approval_mode: all`) still needs only one
+  admin. A group that has members still needs one of them. In an
+  `approval_mode: any` rule, such as `ai_safety`'s `security` or
+  `finance_manager` rule, an admin signs only when none of its groups has
+  members; otherwise a member of one of them does.
 - **Review the registry labels.** The packs act on them, and a field labelled
   `low` that holds personal data isn't protected.
 - **Agents match `requester_role: agent`,** the default role for agent tokens.
