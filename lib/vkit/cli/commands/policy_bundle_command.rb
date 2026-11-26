@@ -49,7 +49,8 @@ module Vkit
               bundle_version: version,
               policies_dir: policies_dir,
               registry_dir: registry_dir,
-              source: source
+              source: source,
+              created_at: created_at(git, source, inputs)
             )
 
             FileUtils.mkdir_p(File.dirname(out))
@@ -118,6 +119,26 @@ module Vkit
           source.merge(dirty: true)
         end
 
+        # The bundle's created_at, from what it's built from rather than the
+        # clock, so bundling the same commit again gives the same checksum and
+        # redeploying it answers already_deployed (a version is uploaded only
+        # once, with one checksum). A clean commit uses its commit time.
+        # Uncommitted inputs (--allow-dirty) or no repo (--version) use the
+        # newest input file's modification time, at least the commit's.
+        def created_at(git, source, inputs)
+          committed = git.commit_time(source[:commit_sha]) if source[:commit_sha]
+          return committed if committed && !source[:dirty]
+
+          [committed, newest_mtime(inputs)].compact.max || Time.now
+        end
+
+        def newest_mtime(inputs)
+          inputs.flat_map { |path| File.directory?(path) ? Dir.glob(File.join(path, "**", "*"), File::FNM_DOTMATCH) : [path] }
+                .select { |path| File.file?(path) }
+                .map { |path| File.mtime(path) }
+                .max
+        end
+
         def not_versioned
           Vkit::CLI::CommandError.new(
             "This policy project isn't in a git repository, so the bundle would have no version.",
@@ -134,8 +155,9 @@ module Vkit
           if ignored.include?(Vkit::Policy::PackIntegrity::TRACKING_PATH)
             fix << "and in .gitignore, replace .vkit/ with two lines: .vkit/* and !.vkit/packs.yaml"
           end
-          fix += ["git commit -m \"Update VaultKit policies\"",
-                  "or bundle anyway, recorded as dirty: vkit policy bundle --allow-dirty"]
+          # Only the commit: agents following setup.md never bundle dirty, so
+          # --allow-dirty is left to `vkit help policy bundle`.
+          fix << "git commit -m \"Update VaultKit policies\""
           files = changed.map { |c| "   #{c[:path]}#{' (ignored by .gitignore)' if c[:ignored]}" }
 
           Vkit::CLI::CommandError.new(

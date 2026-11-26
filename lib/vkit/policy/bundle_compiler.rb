@@ -15,7 +15,13 @@ module Vkit
 
       # Raises if a policy can never match (see MatchCheck), or if an
       # installed pack is missing policies (see PackIntegrity).
-      def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {}, project_root: Dir.pwd)
+      #
+      # The checksum covers created_at (the control plane checks the whole
+      # bundle), so a rebuild only gets the same checksum, and a redeploy is
+      # a no-op, when created_at comes from the inputs rather than the clock.
+      # `vkit policy bundle` passes the commit's time; see its created_at.
+      def self.compile!(org_slug:, bundle_version:, policies_dir:, registry_dir:, source: {}, project_root: Dir.pwd,
+                        created_at: Time.now)
         policies = load_policies(policies_dir)
         installed_packs = PackIntegrity.check!(project_root: project_root, policies_dir: policies_dir, policies: policies)
         raw_registry = load_raw_registry(registry_dir)
@@ -27,7 +33,7 @@ module Vkit
             "format_version" => FORMAT_VERSION,
             "org_slug" => org_slug,
             "bundle_version" => bundle_version,
-            "created_at" => Time.now.utc.iso8601,
+            "created_at" => created_at.utc.iso8601,
             "source" => normalize_source(source),
             "checksum" => "" # filled below
           },
