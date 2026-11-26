@@ -10,7 +10,7 @@ module Vkit
       # none failed; under --format json a failure is status "error"
       # (doctor_checks_failed) with the checks still in result.
       class DoctorCommand < BaseCommand
-        ICONS = { "pass" => "✓", "warn" => "!", "fail" => "✗" }.freeze
+        ICONS = { "pass" => "✓", "warn" => "!", "fail" => "✗", "info" => "i" }.freeze
 
         def initialize(runner: nil)
           super()
@@ -52,7 +52,7 @@ module Vkit
             label = Vkit::CLI::Doctor::LABELS.fetch(c["name"], c["name"]).ljust(width)
             if c.key?("status")
               puts "  #{ICONS[c['status']]} #{label}  #{c['detail']}"
-              puts "    #{' ' * width}  Fix: #{c['fix']}" if c["fix"] && c["status"] != "pass"
+              puts "    #{' ' * width}  #{c['status'] == 'info' ? '' : 'Fix: '}#{c['fix']}" if c["fix"] && c["status"] != "pass"
             else
               puts "  - #{label}  Skipped: #{c['reason']}"
               puts "    #{' ' * width}  #{c['fix']}" if c["fix"]
@@ -61,7 +61,7 @@ module Vkit
           counts = report["summary"]
           puts
           puts "  #{counts['pass']} passed, #{counts['warn']} #{counts['warn'] == 1 ? 'warning' : 'warnings'}, " \
-               "#{counts['fail']} failed#{", #{report['skipped'].size} skipped" if report['skipped'].any?}"
+               "#{counts['fail']} failed#{", #{counts['info']} info" if counts['info'].to_i.positive?}#{", #{report['skipped'].size} skipped" if report['skipped'].any?}"
         end
       end
     end

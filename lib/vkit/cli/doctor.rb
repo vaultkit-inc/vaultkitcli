@@ -28,6 +28,12 @@ module Vkit
       PASS = "pass"
       WARN = "warn"
       FAIL = "fail"
+      # Something doctor couldn't check and that isn't a problem in itself
+      # (an older control plane that doesn't report it), or worth knowing
+      # without being a warning. Never a pass, never a failure.
+      INFO = "info"
+      STATUSES = [PASS, WARN, FAIL, INFO].freeze
+      UPGRADE_FIX = "Upgrade the control plane."
 
       ROLE_SAFETY_ISSUE = "https://github.com/vaultkit-inc/vaultkit/issues/125"
       RUBYGEMS_LATEST = "https://rubygems.org/api/v1/versions/vaultkit/latest.json"
@@ -126,7 +132,7 @@ module Vkit
         end
 
         def to_h
-          counts = %w[pass warn fail].to_h { |s| [s, @checks.count { |c| c.status == s }] }
+          counts = STATUSES.to_h { |s| [s, @checks.count { |c| c.status == s }] }
           { "ok" => !failed?, "summary" => counts, "checks" => @checks.map(&:to_h), "skipped" => @skipped }
         end
 
@@ -161,6 +167,16 @@ module Vkit
           result.name = name
           @ran[name] = result
           @checks << result
+        end
+
+        # An older control plane that lacks the endpoint or fields a check
+        # reads: reported, never passed.
+        def too_old(what)
+          check(INFO, "Can't check #{what}: the control plane is too old to report it.", UPGRADE_FIX)
+        end
+
+        def not_found?(error)
+          error.is_a?(API::APIError) && error.status == 404
         end
 
         def check(status, detail, fix = nil, **extra)
@@ -393,6 +409,8 @@ module Vkit
         #    the comparison is between commits.
         def policy_bundle
           version = active_bundle_version
+          return too_old("the active policy bundle") if version == :unknown
+
           if version.nil?
             return check(FAIL, "No policy bundle is active in #{@org}, so no request is allowed.",
                          "vkit policy bundle && vkit policy deploy")
@@ -436,8 +454,10 @@ module Vkit
                 "vkit policy bundle && vkit policy deploy")
         end
 
-        # The active bundle's version: GET /approval_groups names it for any
-        # member; GET /setup (admins) is asked only if that fails.
+        # The active bundle's version (nil: none is active): GET
+        # /approval_groups names it for any member; GET /setup (admins) is
+        # asked only if that fails. :unknown when the control plane has
+        # neither (builds from before 2026-10-27) or doesn't say.
         def active_bundle_version
           groups = begin
             approval_groups
@@ -446,8 +466,16 @@ module Vkit
           end
           return groups["policy_bundle_version"] if groups.is_a?(Hash) && groups.key?("policy_bundle_version")
 
-          setup = @client.get(org_path("/setup"))
-          setup.is_a?(Hash) ? setup.dig("active_policy", "version") : nil
+          setup = begin
+            @client.get(org_path("/setup"))
+          rescue API::APIError => e
+            return :unknown if not_found?(e) && (groups || not_found?(@approval_groups_error))
+
+            raise
+          end
+          return :unknown unless setup.is_a?(Hash) && setup.key?("active_policy")
+
+          setup.dig("active_policy", "version")
         end
 
         def uncommitted_note(git)
@@ -460,8 +488,11 @@ module Vkit
         end
 
         # 7b. Who approves each approval group's requests. A group nobody is
-        #     in falls back to org admins (vaultkit#123), which is fine to
-        #     know but not a problem; only an unreadable list fails.
+        #     in falls back to org admins (vaultkit#127), which is worth
+        #     knowing but not a problem (info). Only an error fails; a control
+        #     plane that doesn't report active_member_count and
+        #     admin_fallback (or has no GET /approval_groups) is too old to
+        #     tell, which is never a pass.
         def approval_groups
           return @approval_groups if defined?(@approval_groups)
 
@@ -472,36 +503,36 @@ module Vkit
           raise
         end
 
-        def approval_routing
-          raise @approval_groups_error if @approval_groups_error
+        ROUTING_FIELDS = %w[active_member_count admin_fallback].freeze
 
-          groups = Array((approval_groups || {})["groups"])
+        def approval_routing
+          if @approval_groups_error
+            return too_old("approval routing") if not_found?(@approval_groups_error)
+
+            raise @approval_groups_error
+          end
+
+          response = approval_groups
+          return too_old("approval routing") unless response.is_a?(Hash) && response.key?("groups")
+
+          groups = Array(response["groups"])
           return check(PASS, "No policy routes requests to an approval group.") if groups.empty?
+          return too_old("approval routing") unless groups.all? { |g| ROUTING_FIELDS.all? { |f| g.key?(f) } }
 
           described = []
-          notes = []
-          unrouted = []
+          fallback = []
           groups.each do |g|
             name = g["name"].to_s
-            members = (g.key?("active_member_count") ? g["active_member_count"] : g["member_count"]).to_i
-            described << "#{name} (#{count(members, 'member')})"
-            if g["admin_fallback"] == true
-              notes << "#{name} has no members, so org admins approve its requests."
-            elsif !g.key?("admin_fallback") && members.zero? && g["policy_count"].to_i.positive?
-              unrouted << name
-            end
+            described << "#{name} (#{count(g['active_member_count'].to_i, 'member')})"
+            fallback << name if g["admin_fallback"] == true
           end
 
           detail = "#{count(groups.size, 'group')}: #{described.join(', ')}."
-          detail += " #{notes.join(' ')}" if notes.any?
-          if unrouted.any?
-            return check(WARN, "#{detail} #{unrouted.join(', ')} #{unrouted.size == 1 ? 'has' : 'have'} no members, " \
-                               "and this control plane doesn't say who approves #{unrouted.size == 1 ? 'its' : 'their'}" \
-                               " requests.",
-                         "Add someone to #{unrouted.join(', ')} in the console (Team), or upgrade the control plane.")
-          end
+          return check(PASS, detail) if fallback.empty?
 
-          check(PASS, detail)
+          notes = fallback.map { |name| "#{name} has no members, so org admins approve its requests." }
+          check(INFO, "#{detail} #{notes.join(' ')}", "To have someone else approve, add them to " \
+                                                      "#{fallback.join(', ')} in the console (Team).")
         end
 
         # 8. The agent's own credentials, as the SDK and vaultkit-mcp read
@@ -538,6 +569,10 @@ module Vkit
             fixes << (mapped[:code] == "control_plane_unreachable" ? "Check VAULTKIT_BASE_URL." : agent_token_fix)
             return check(FAIL, "#{problems.join('; ')}.", fixes.join(" "))
           end
+
+          # Before whoami said type (early 2026), it answered only for people,
+          # with { user }; anything else can't be told apart.
+          return too_old("the agent token") if !me.key?("type") && !me.key?("user")
 
           if me["type"] != "agent"
             problems << "VAULTKIT_TOKEN is a person's login, not an agent token: the agent would act as them " \

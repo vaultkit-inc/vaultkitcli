@@ -276,15 +276,24 @@ It checks, in order:
 | `datasource_role` | Always a warning for now, "not verified": VaultKit can't yet check that a datasource connects as a dedicated read-only role ([vaultkit#125](https://github.com/vaultkit-inc/vaultkit/issues/125)). |
 | `schema` | Each reachable datasource is in the registry, unchanged since its last applied scan, and every column has a classification. |
 | `policy_bundle` | A bundle is active, and it's this repository's HEAD, or an earlier commit with the same policies, registry and `.vkit/packs.yaml`. Nothing is compiled or written, and uncommitted changes don't count (they're mentioned). |
-| `approval_routing` | `GET /approval_groups` answers. A group with no members is listed as information ("org admins approve its requests"), not a warning. |
+| `approval_routing` | Every approval group has members. A group with none is `info`, not a warning ("<group> has no members, so org admins approve its requests"); groups with members aren't flagged. Fails only if `GET /approval_groups` errors. |
 | `agent_token` | `VAULTKIT_BASE_URL`, `VAULTKIT_ORG` and `VAULTKIT_TOKEN` are set, and the token is a working agent token for that organization. Fails if `VKIT_TOKEN` is an agent token, since every vkit command would then run as the agent. |
 | `mcp_server` | Optional, when `vaultkit-mcp` is installed: it starts with those variables and lists `vaultkit_discover`, `vaultkit_query` and `vaultkit_check_approval`. |
 
 A check that needs one that failed is skipped, with the reason. Tokens are
 never printed, nor any part of one.
 
+A check whose endpoint or fields an older control plane doesn't have is never
+passed: it's `info`, "Can't check <what>: the control plane is too old to
+report it.", with the fix "Upgrade the control plane." That applies to
+`approval_routing` (no `active_member_count` and `admin_fallback` per group,
+before vaultkit#127, or no `GET /approval_groups`), `policy_bundle` (no
+`GET /approval_groups` or `GET /setup`, builds before 2026-10-27) and
+`agent_token` (a whoami that doesn't say what the token is).
+
 `--format json` returns `result.checks`, a list of `{ name, status, detail, fix }`
-(`status` is `pass`, `warn` or `fail`), and `result.skipped`. vkit doctor exits
+(`status` is `pass`, `warn`, `fail` or `info`), and `result.skipped`. `info` is
+neither a pass nor a failure. vkit doctor exits
 0 only when no check failed; otherwise the envelope's status is `error`, with
 code `doctor_checks_failed`, and the checks are still in `result`.
 

@@ -212,7 +212,7 @@ class DoctorHealthyTest < Minitest::Test
                    "datasource_role" => "warn", "schema" => "pass", "policy_bundle" => "pass",
                    "approval_routing" => "pass", "agent_token" => "pass" }, statuses)
     assert_equal %w[mcp_server], report["skipped"].map { |s| s["name"] }
-    assert_equal({ "pass" => 8, "warn" => 1, "fail" => 0 }, report["summary"])
+    assert_equal({ "pass" => 8, "warn" => 1, "fail" => 0, "info" => 0 }, report["summary"])
     report["checks"].each { |c| assert_equal %w[name status detail fix], c.keys.first(4) }
   end
 
@@ -516,6 +516,21 @@ class DoctorPolicyBundleTest < Minitest::Test
     FileUtils.rm_rf(dir)
   end
 
+  def test_too_old_when_neither_endpoint_exists
+    login_routes["GET /api/v1/orgs/acme/approval_groups"] = api_error(404, { "error" => "Not Found" })
+    login_routes["GET /api/v1/orgs/acme/setup"] = api_error(404, { "error" => "Not Found" })
+    c = check("policy_bundle")
+    assert_equal "info", c["status"]
+    assert_equal "Can't check the active policy bundle: the control plane is too old to report it.", c["detail"]
+    assert_equal "Upgrade the control plane.", c["fix"]
+  end
+
+  def test_too_old_when_neither_names_the_version
+    login_routes["GET /api/v1/orgs/acme/approval_groups"] = { "groups" => [] }
+    login_routes["GET /api/v1/orgs/acme/setup"] = { "datasource_count" => 1 }
+    assert_equal "info", check("policy_bundle")["status"]
+  end
+
   def test_falls_back_to_the_setup_endpoint
     login_routes["GET /api/v1/orgs/acme/approval_groups"] = api_error(500, { "error" => "boom" })
     login_routes["GET /api/v1/orgs/acme/setup"] = -> { { "active_policy" => { "version" => head } } }
@@ -526,17 +541,64 @@ end
 class DoctorApprovalRoutingTest < Minitest::Test
   include DoctorTestSupport
 
+  TOO_OLD = "Can't check approval routing: the control plane is too old to report it."
+
   def groups(*list)
     login_routes["GET /api/v1/orgs/acme/approval_groups"] = -> { { "policy_bundle_version" => head, "groups" => list } }
   end
 
-  def test_a_group_with_no_members_is_information_not_a_warning
-    groups({ "name" => "security", "active_member_count" => 2, "admin_fallback" => false, "policy_count" => 1 },
-           { "name" => "finance", "active_member_count" => 0, "admin_fallback" => true, "policy_count" => 2 })
+  def staffed
+    { "name" => "security", "member_count" => 2, "active_member_count" => 2, "admin_fallback" => false,
+      "policy_count" => 1 }
+  end
+
+  def empty
+    { "name" => "finance", "member_count" => 0, "active_member_count" => 0, "admin_fallback" => true,
+      "policy_count" => 2 }
+  end
+
+  def test_groups_with_members_pass
+    groups(staffed)
     c = check("approval_routing")
     assert_equal "pass", c["status"]
-    assert_includes c["detail"], "finance has no members, so org admins approve its requests."
     assert_includes c["detail"], "security (2 members)"
+    refute_includes c["detail"], "org admins"
+  end
+
+  def test_a_group_with_no_members_is_info_and_the_other_is_not_flagged
+    groups(staffed, empty)
+    runner, report = run_doctor
+    c = check("approval_routing", report)
+    assert_equal "info", c["status"]
+    assert_includes c["detail"], "finance has no members, so org admins approve its requests."
+    refute_includes c["detail"], "security has no members"
+    assert_includes c["detail"], "security (2 members)"
+    assert_equal 1, report["summary"]["info"]
+    refute runner.failed?
+  end
+
+  def test_missing_fields_are_too_old_not_a_pass
+    groups({ "name" => "finance", "member_count" => 0, "policy_count" => 2 },
+           { "name" => "security", "member_count" => 2, "policy_count" => 1 })
+    runner, report = run_doctor
+    c = check("approval_routing", report)
+    assert_equal "info", c["status"]
+    assert_equal TOO_OLD, c["detail"]
+    assert_equal "Upgrade the control plane.", c["fix"]
+    refute runner.failed?
+  end
+
+  def test_a_group_with_members_but_no_fields_is_still_too_old
+    groups({ "name" => "security", "member_count" => 2, "policy_count" => 1 })
+    assert_equal TOO_OLD, check("approval_routing")["detail"]
+  end
+
+  def test_no_approval_groups_endpoint_is_too_old
+    login_routes["GET /api/v1/orgs/acme/approval_groups"] = api_error(404, { "error" => "Not Found" })
+    login_routes["GET /api/v1/orgs/acme/setup"] = -> { { "active_policy" => { "version" => head } } }
+    c = check("approval_routing")
+    assert_equal "info", c["status"]
+    assert_equal TOO_OLD, c["detail"]
   end
 
   def test_fails_only_when_the_endpoint_errors
@@ -547,16 +609,18 @@ class DoctorApprovalRoutingTest < Minitest::Test
     assert_includes c["detail"], "boom"
   end
 
-  def test_warns_when_an_older_control_plane_does_not_say_who_approves
-    groups({ "name" => "finance", "member_count" => 0, "policy_count" => 2 })
-    c = check("approval_routing")
-    assert_equal "warn", c["status"]
-    assert_includes c["detail"], "doesn't say who approves"
-  end
-
   def test_no_groups
     groups
     assert_equal "pass", check("approval_routing")["status"]
+  end
+
+  def test_human_output_shows_info
+    groups(staffed, empty)
+    out, = capture_io do
+      Vkit::CLI::Commands::DoctorCommand.new(runner: runner).call
+    end
+    assert_includes out, "i Approval routing"
+    assert_includes out, "1 info"
   end
 end
 
@@ -618,6 +682,13 @@ class DoctorAgentTokenTest < Minitest::Test
     c = check("agent_token")
     assert_equal "fail", c["status"]
     assert_includes c["detail"], "a person's login"
+  end
+
+  def test_too_old_when_whoami_does_not_say_what_the_token_is
+    agent_routes["GET /auth/whoami"] = { "id" => 7 }
+    c = check("agent_token")
+    assert_equal "info", c["status"]
+    assert_equal "Can't check the agent token: the control plane is too old to report it.", c["detail"]
   end
 
   def test_fails_on_the_wrong_org
@@ -734,7 +805,7 @@ class DoctorCommandTest < Minitest::Test
     assert_equal 0, code
     assert_equal "ok", envelope["status"]
     assert_equal true, envelope["result"]["ok"]
-    assert(envelope["result"]["checks"].all? { |c| %w[pass warn fail].include?(c["status"]) })
+    assert(envelope["result"]["checks"].all? { |c| %w[pass warn fail info].include?(c["status"]) })
   end
 
   def test_error_envelope_and_exit_one_when_a_check_failed

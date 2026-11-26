@@ -77,8 +77,9 @@ To see where setup stands, or after it, run `vkit doctor --format json` from
 the policy project. Each entry in `result.checks` is `{ name, status, detail,
 fix }`; work through the `fail` ones first, in order, and follow each `fix`.
 A `warn` is worth telling the person about but doesn't stop anything (the
-`datasource_role` check is always one for now). It exits 0 only when nothing
-failed, and changes nothing.
+`datasource_role` check is always one for now). An `info` is something to pass
+on, not a problem: a group org admins approve for, or a check the control plane
+is too old to answer. It exits 0 only when nothing failed, and changes nothing.
 
 ## Reviewing classifications
 
