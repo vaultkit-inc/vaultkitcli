@@ -39,12 +39,15 @@ module Vkit
       desc "init", "Initialize a new VaultKit project"
       option :dir, type: :string, default: ".", desc: "Target directory"
       option :with, type: :string, desc: "Comma-separated policy packs to install (e.g. starter,ai_safety)"
+      option :git, type: :boolean, default: true,
+                   desc: "Run git init when the folder isn't in a git repository (--no-git to skip)"
       def init
         packs = options[:with]&.split(",")&.map(&:strip)
 
         Commands::InitCommand.new.call(
           dir: options[:dir],
-          packs: packs
+          packs: packs,
+          git: options[:git]
         )
       end
 
@@ -205,7 +208,10 @@ module Vkit
         option :registry_dir, type: :string, default: "datasets"
         option :out, type: :string, default: "dist/policy_bundle.json"
         option :org, type: :string
-        option :version, type: :string
+        option :version, type: :string,
+                         desc: "Name the bundle (defaults to the git commit); the commit is still recorded from git"
+        option :allow_dirty, type: :boolean, default: false,
+                             desc: "Bundle uncommitted changes anyway; the bundle is recorded as dirty"
 
         def bundle
           Commands::PolicyBundleCommand.new.call(
@@ -213,7 +219,8 @@ module Vkit
             registry_dir: options[:registry_dir],
             out: options[:out],
             org: options[:org],
-            version: options[:version]
+            version: options[:version],
+            allow_dirty: options[:allow_dirty]
           )
         end
 

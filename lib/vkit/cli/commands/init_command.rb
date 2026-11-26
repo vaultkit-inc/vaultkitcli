@@ -3,15 +3,26 @@
 require "fileutils"
 require_relative "base_command"
 require_relative "../policy_pack/manager"
+require_relative "../../policy/git_state"
 
 module Vkit
   module CLI
     module Commands
       class InitCommand < BaseCommand
-        def call(dir:, packs:)
+        # .vkit/packs.yaml records the installed packs, and vkit policy bundle
+        # checks them against it, so it's committed. Nothing else in .vkit/ is
+        # (nothing else is written there today).
+        GITIGNORE = <<~IGNORE
+          dist/
+          .vkit/*
+          !.vkit/packs.yaml
+        IGNORE
+
+        def call(dir:, packs:, git: true)
           dir = File.expand_path(dir)
           FileUtils.mkdir_p(dir)
 
+          init_git(dir) if git
           create_structure(dir)
 
           manager = Vkit::CLI::PolicyPack::Manager.new(
@@ -44,8 +55,9 @@ module Vkit
           puts "\nNext steps:"
           puts "  1. Review policies in config/policies/"
           puts "  2. Run: vkit scan <datasource> --mode apply"
-          puts "  3. Run: vkit policy bundle"
-          puts "  4. Run: vkit policy deploy"
+          puts "  3. Commit: git add -A && git commit -m \"Add VaultKit policies\""
+          puts "  4. Run: vkit policy bundle"
+          puts "  5. Run: vkit policy deploy"
 
         rescue StandardError => e
           puts "❌ Error: #{e.message}"
@@ -53,6 +65,19 @@ module Vkit
         end
 
         private
+
+        # A bundle's version is the commit its policies are in, so a new
+        # project starts as a repository. Never commits.
+        def init_git(dir)
+          return if Vkit::Policy::GitState.new(dir).repo?
+
+          if system("git", "init", "--quiet", dir, out: File::NULL, err: File::NULL)
+            puts "✓ Initialized a git repository in #{dir}"
+          else
+            puts "⚠️  Couldn't run git init (is git installed?). vkit policy bundle needs a git repository " \
+                 "or --version."
+          end
+        end
 
         def create_structure(dir)
           FileUtils.mkdir_p(File.join(dir, "config", "policies"))
@@ -79,12 +104,7 @@ module Vkit
           end
         
           gitignore_path = File.join(dir, ".gitignore")
-          unless File.exist?(gitignore_path)
-            File.write(
-              gitignore_path,
-              "dist/\n.vkit/\n"
-            )
-          end
+          File.write(gitignore_path, GITIGNORE) unless File.exist?(gitignore_path)
         end        
       end
     end

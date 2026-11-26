@@ -785,37 +785,57 @@ done
 
 ### Policy Management Commands
 
-#### `vkit policy bundle`
+#### `vkit init`
 
-Compile policies and registry into a deployable bundle.
+Creates a policy project: `config/policies/`, `datasets/` and `.vkit/`, with the `starter` pack (or the packs in `--with`). If the folder isn't inside a git repository, it runs `git init` and says so; `--no-git` skips that. It never commits.
+
+The generated `.gitignore` ignores `dist/` and everything in `.vkit/` except `.vkit/packs.yaml`, the record of installed packs. Commit `packs.yaml`: `vkit policy bundle` checks the packs against it, and a clone without it can't.
 
 ```bash
-vkit policy bundle [OPTIONS]
+vkit init --dir policies --with starter,ai_safety
+cd policies && git add -A && git commit -m "Add VaultKit policies"
+```
+
+#### `vkit policy bundle`
+
+Compiles the policies and registry into a deployable bundle, after checking every policy can match and every installed pack is complete.
+
+```bash
+vkit policy bundle [--policies_dir config/policies] [--registry_dir datasets] \
+  [--out dist/policy_bundle.json] [--org ORG] [--version LABEL] [--allow-dirty]
 ```
 
 **Options:**
-- `--policies_dir` — Path to policies directory (default: `config/policies`)
-- `--registry_dir` — Path to registry files (default: `config`)
-- `--datasources_dir` — Path to datasource configs (default: `config/datasources`)
+- `--policies_dir` — Policies directory (default: `config/policies`)
+- `--registry_dir` — Registry directory (default: `datasets`)
 - `--out` — Output bundle file (default: `dist/policy_bundle.json`)
-- `--org` — Organization identifier (optional, defaults to logged-in user's org)
+- `--org` — Must match the organization you're signed in to
+- `--version` — Name the bundle, such as `v1.2`. By default the bundle is named by its git commit. Either way, `source.commit_sha` is the commit from git, and is left out outside a git repository.
+- `--allow-dirty` — Bundle uncommitted changes anyway. It prints a warning, and the bundle records `source.dirty: true`.
+
+**Versions come from git.** A bundle's version is the commit its policies are in, so a deployed bundle can be traced to exactly those files. So `vkit policy bundle` refuses, writing nothing, when:
+
+| Code | When | Fix |
+|---|---|---|
+| `bundle_not_committed` | Anything under the policies or registry directory, or `.vkit/packs.yaml`, differs from the last commit: modified, staged, new, deleted, or ignored by `.gitignore` | `git add -A -- config/policies datasets .vkit/packs.yaml && git commit`, or `--allow-dirty` |
+| `bundle_not_versioned` | There's no git repository (or no commit yet) and no `--version` | `git init`, add and commit, or pass `--version` |
+
+```
+❌ These files aren't committed, so the bundle's version wouldn't match its policies:
+   config/policies/30_payments_require_approval.yaml
+   Code: bundle_not_committed
+   Fix:
+     git add -A -- config/policies datasets .vkit/packs.yaml
+     git commit -m "Update VaultKit policies"
+     or bundle anyway, recorded as dirty: vkit policy bundle --allow-dirty
+```
+
+Projects created by older versions of `vkit init` ignore all of `.vkit/`, so `.vkit/packs.yaml` shows as ignored. Add it with `git add -f .vkit/packs.yaml`, and in `.gitignore` replace `.vkit/` with `.vkit/*` and `!.vkit/packs.yaml`.
 
 **Example:**
 ```bash
-# Using logged-in user's org
-vkit policy bundle \
-  --policies_dir config/policies \
-  --registry_dir config \
-  --datasources_dir config/datasources \
-  --out dist/policy_bundle.json
-
-# Specifying org explicitly
-vkit policy bundle \
-  --policies_dir config/policies \
-  --registry_dir config \
-  --datasources_dir config/datasources \
-  --out dist/policy_bundle.json \
-  --org acme
+git add -A && git commit -m "Mask emails for analysts"
+vkit policy bundle && vkit policy deploy
 ```
 
 #### `vkit policy validate`

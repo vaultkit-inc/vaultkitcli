@@ -4,12 +4,16 @@ require "json"
 require "fileutils"
 require_relative "../../policy/bundle_compiler"
 require_relative "../../policy/validation_error"
+require_relative "../../policy/git_state"
+require_relative "../../policy/pack_integrity"
+require_relative "../errors"
 
 module Vkit
   module CLI
     module Commands
       class PolicyBundleCommand < BaseCommand
-        def call(policies_dir:, registry_dir:, out:, org:, version:)
+        def call(policies_dir:, registry_dir:, out:, org:, version:, allow_dirty: false)
+          inputs = [policies_dir, registry_dir, Vkit::Policy::PackIntegrity::TRACKING_PATH]
           policies_dir = File.expand_path(policies_dir)
           registry_dir = File.expand_path(registry_dir)
           out          = File.expand_path(out)
@@ -17,7 +21,9 @@ module Vkit
           raise "Policies dir not found: #{policies_dir}" unless Dir.exist?(policies_dir)
           raise "Registry dir not found: #{registry_dir}" unless Dir.exist?(registry_dir)
 
-          version ||= git_sha
+          git = Vkit::Policy::GitState.new(Dir.pwd)
+          source = source_for(git, version, inputs, allow_dirty)
+          version ||= source[:commit_sha]
 
           with_auth do
             derived_org = credential_store.user["organization_slug"]
@@ -43,11 +49,7 @@ module Vkit
               bundle_version: version,
               policies_dir: policies_dir,
               registry_dir: registry_dir,
-              source: {
-                repo: git_repo,
-                ref: git_ref,
-                commit_sha: version
-              }
+              source: source
             )
 
             FileUtils.mkdir_p(File.dirname(out))
@@ -60,12 +62,69 @@ module Vkit
             puts "   Output:   #{out}"
             print_policy_summary(bundle, policies_dir)
           end
+        rescue Vkit::CLI::CommandError => e
+          puts e.render
+          exit 1
         rescue Vkit::Policy::ValidationError => e
           puts e.message
           exit 1
         end
 
         private
+
+        # The bundle's source block. commit_sha is the commit the policies are
+        # in, from git only; --version only names the bundle. Refuses to bundle
+        # what can't be traced to a commit, unless told to.
+        def source_for(git, version, inputs, allow_dirty)
+          unless git.repo?
+            raise not_versioned unless version
+
+            return {}
+          end
+
+          head = git.head
+          raise not_versioned unless head || version
+
+          source = { repo: git.remote_url, ref: git.branch, commit_sha: head }
+          changed = git.uncommitted(inputs)
+          return source if changed.empty?
+          raise not_committed(changed, inputs) unless allow_dirty
+
+          warn_dirty(changed)
+          source.merge(dirty: true)
+        end
+
+        def not_versioned
+          Vkit::CLI::CommandError.new(
+            "This policy project isn't in a git repository, so the bundle would have no version.",
+            code: "bundle_not_versioned",
+            fix: ["git init && git add -A && git commit -m \"Add VaultKit policies\"",
+                  "or name the bundle: vkit policy bundle --version <label>"]
+          )
+        end
+
+        def not_committed(changed, inputs)
+          ignored = changed.select { |c| c[:ignored] }.map { |c| c[:path] }
+          fix = ["git add -A -- #{inputs.join(' ')}"]
+          fix << "git add -f -- #{ignored.join(' ')}" if ignored.any?
+          if ignored.include?(Vkit::Policy::PackIntegrity::TRACKING_PATH)
+            fix << "and in .gitignore, replace .vkit/ with two lines: .vkit/* and !.vkit/packs.yaml"
+          end
+          fix += ["git commit -m \"Update VaultKit policies\"",
+                  "or bundle anyway, recorded as dirty: vkit policy bundle --allow-dirty"]
+          files = changed.map { |c| "   #{c[:path]}#{' (ignored by .gitignore)' if c[:ignored]}" }
+
+          Vkit::CLI::CommandError.new(
+            "These files aren't committed, so the bundle's version wouldn't match its policies:\n#{files.join("\n")}",
+            code: "bundle_not_committed",
+            fix: fix
+          )
+        end
+
+        def warn_dirty(changed)
+          puts "⚠️  Bundling uncommitted changes (--allow-dirty). The bundle is recorded as dirty:"
+          changed.each { |c| puts "   #{c[:path]}" }
+        end
 
         # Per-pack counts on every bundle, so a pack that contributes nothing
         # is visible even when nothing errors.
@@ -84,23 +143,6 @@ module Vkit
         def relative(path)
           path.delete_prefix(Dir.pwd + File::SEPARATOR)
         end
-
-        def git_sha
-          out = `git rev-parse HEAD 2>/dev/null`.strip
-          return nil if out.empty?
-        
-          out
-        end
-        
-        def git_repo
-          out = `git config --get remote.origin.url 2>/dev/null`.strip
-          out.empty? ? nil : out
-        end
-        
-        def git_ref
-          out = `git rev-parse --abbrev-ref HEAD 2>/dev/null`.strip
-          out.empty? ? nil : out
-        end        
       end
     end
   end
