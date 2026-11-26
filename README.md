@@ -254,6 +254,40 @@ vkit whoami --format json
 }
 ```
 
+### `vkit doctor`
+
+Check that VaultKit is set up and working from here, and say how to fix what
+isn't. Run it from your policy project so it can compare the active bundle with
+your commits (or pass `--dir <project>`).
+
+```bash
+vkit doctor
+vkit doctor --format json
+```
+
+It checks, in order:
+
+| Check | Passes when |
+|---|---|
+| `cli_version` | Always; warns when RubyGems has a newer vkit. Offline, the newer-version check is left out. |
+| `control_plane` | The control plane answers its health check at the configured URL. |
+| `login` | You're signed in (or in a setup session); says when the session expires, and warns in its last 10 minutes. |
+| `datasources` | At least one datasource exists, and VaultKit connected to each. Uses `vkit scan <datasource>` in diff_only mode: it reads the schema, never data, and changes nothing in the registry. Admins only. |
+| `datasource_role` | Always a warning for now, "not verified": VaultKit can't yet check that a datasource connects as a dedicated read-only role ([vaultkit#125](https://github.com/vaultkit-inc/vaultkit/issues/125)). |
+| `schema` | Each reachable datasource is in the registry, unchanged since its last applied scan, and every column has a classification. |
+| `policy_bundle` | A bundle is active, and it's this repository's HEAD, or an earlier commit with the same policies, registry and `.vkit/packs.yaml`. Nothing is compiled or written, and uncommitted changes don't count (they're mentioned). |
+| `approval_routing` | `GET /approval_groups` answers. A group with no members is listed as information ("org admins approve its requests"), not a warning. |
+| `agent_token` | `VAULTKIT_BASE_URL`, `VAULTKIT_ORG` and `VAULTKIT_TOKEN` are set, and the token is a working agent token for that organization. Fails if `VKIT_TOKEN` is an agent token, since every vkit command would then run as the agent. |
+| `mcp_server` | Optional, when `vaultkit-mcp` is installed: it starts with those variables and lists `vaultkit_discover`, `vaultkit_query` and `vaultkit_check_approval`. |
+
+A check that needs one that failed is skipped, with the reason. Tokens are
+never printed, nor any part of one.
+
+`--format json` returns `result.checks`, a list of `{ name, status, detail, fix }`
+(`status` is `pass`, `warn` or `fail`), and `result.skipped`. vkit doctor exits
+0 only when no check failed; otherwise the envelope's status is `error`, with
+code `doctor_checks_failed`, and the checks are still in `result`.
+
 ### `vkit logout`
 
 Clear stored credentials and end session.

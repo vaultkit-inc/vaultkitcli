@@ -73,6 +73,13 @@ Each step is safe to run twice:
 - **`policy pack add`** for an installed pack returns `already_existed: true`.
 - **`policy deploy`** of the version that's already active returns `already_deployed: true`.
 
+To see where setup stands, or after it, run `vkit doctor --format json` from
+the policy project. Each entry in `result.checks` is `{ name, status, detail,
+fix }`; work through the `fail` ones first, in order, and follow each `fix`.
+A `warn` is worth telling the person about but doesn't stop anything (the
+`datasource_role` check is always one for now). It exits 0 only when nothing
+failed, and changes nothing.
+
 ## Reviewing classifications
 
 `vkit scan --format json` (either mode) lists every column of the scanned datasets. Each column has:

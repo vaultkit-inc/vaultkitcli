@@ -51,6 +51,13 @@ module Vkit
         Commands::WhoamiCommand.new.call
       end
 
+      desc "doctor", "Check that VaultKit is set up and working, and say how to fix what isn't"
+      option :dir, type: :string, default: ".", desc: "The policy project to compare the active bundle with"
+      option :format, **FORMAT_OPTION
+      def doctor
+        Commands::DoctorCommand.new.call(dir: options[:dir])
+      end
+
       desc "logout", "Clear stored credentials"
       option :format, **FORMAT_OPTION
       def logout

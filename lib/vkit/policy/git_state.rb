@@ -36,6 +36,29 @@ module Vkit
         ok && !out.empty? ? out : nil
       end
 
+      # Whether rev names a commit in this repository (a bundle version
+      # that's a commit SHA, rather than a --version label).
+      def commit?(rev)
+        return false if rev.to_s.strip.empty? || rev.to_s.start_with?("-")
+
+        git("cat-file", "-e", "#{rev}^{commit}").last
+      end
+
+      # Whether anything under `paths` differs between two commits. Paths
+      # are relative to `root`; ones that exist in neither are ignored.
+      def changed_between?(from, to, paths)
+        out, ok = git("diff", "--name-only", from, to, "--", *paths)
+        raise "git diff failed in #{root}" unless ok
+
+        !out.empty?
+      end
+
+      # How many commits `to` has that `from` doesn't (nil when unknown).
+      def commits_between(from, to)
+        out, ok = git("rev-list", "--count", "#{from}..#{to}")
+        ok ? out.to_i : nil
+      end
+
       # Files under `paths` that differ from HEAD: modified, staged, new,
       # deleted, or ignored by .gitignore (they'd be bundled but never
       # committed). [{ path:, ignored: }], with paths relative to `root`.
