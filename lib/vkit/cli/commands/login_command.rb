@@ -1,4 +1,5 @@
 require "io/console"
+require_relative "../secret_input"
 require_relative "../../core/auth_client"
 require_relative "../../core/credential_store"
 require "base64"
@@ -12,9 +13,10 @@ module Vkit
           false
         end
 
-        def initialize(endpoint: nil, email: nil)
+        def initialize(endpoint: nil, email: nil, password_prompt: false)
           @endpoint = endpoint
           @email = email
+          @password_prompt = password_prompt
         end
 
         def call
@@ -22,7 +24,7 @@ module Vkit
             @endpoint ||
             ENV["VKIT_ENDPOINT"] ||
             credential_store.stored_payload&.dig("endpoint") ||
-            prompt("VaultKit Control Plane URL")
+            (json? ? endpoint_needed! : prompt("VaultKit Control Plane URL"))
           client = Vkit::Core::AuthClient.new(base_url: endpoint)
 
           discovery = client.discover
@@ -47,8 +49,17 @@ module Vkit
             user: result[:user]
           )
 
+          Vkit::CLI::Output.register_secret(result[:token])
           puts "✅ Logged in as #{result[:user]['email']}"
+          respond(
+            { "email" => result[:user]["email"], "role" => result[:user]["role"],
+              "organization" => result[:user]["organization_slug"], "endpoint" => endpoint, "auth" => auth },
+            ["vkit init --format json", "vkit datasource add --id <id> --engine <engine> --username <user> " \
+                                        "--config '<json>' --region <region> --environment <env> --password-prompt"]
+          )
         rescue => e
+          raise if json?
+
           puts "❌ Login failed: #{e.message}"
           exit 1
         end
@@ -96,9 +107,22 @@ module Vkit
           "Sign-in was rejected"
         end
 
+        def endpoint_needed!
+          needs_input!("endpoint_required", "No control plane URL to log in to.",
+                       ["Ask the person for their VaultKit control plane URL and rerun with --endpoint <url>."])
+        end
+
+        # Under --format json the password never goes through stdin (an
+        # agent's pipe): only the terminal, and only when asked for.
         def password_flow(client)
+          if json?
+            needs_input!("email_required", "Password login needs an email.", ["Rerun with --email <address>."]) unless @email
+            secret_needed! unless @password_prompt
+          end
+
           email = @email || prompt("Email")
-          password = prompt_password("Password")
+          password = @password_prompt ? Vkit::CLI::SecretInput.from_tty("Password") : prompt_password("Password")
+          Vkit::CLI::Output.register_secret(password)
 
           res = client.password_login(email: email, password: password)
 
@@ -109,13 +133,23 @@ module Vkit
         end
 
         def token_flow(client)
-          token = ENV["VAULTKIT_TOKEN"] || prompt_password("API Token")
+          token = ENV["VAULTKIT_TOKEN"]
+          token ||= Vkit::CLI::SecretInput.from_tty("API Token") if @password_prompt
+          secret_needed! if token.nil? && json?
+          token ||= prompt_password("API Token")
+          Vkit::CLI::Output.register_secret(token)
           user = client.whoami(token)
 
           {
             token: token,
             user: user
           }
+        end
+
+        def secret_needed!
+          needs_input!("secret_required", "Logging in needs a secret the person has to type.",
+                       ["Ask the person to run `vkit login --password-prompt` in their own terminal " \
+                        "and type it there, then rerun your command."])
         end
 
         def prompt(label)

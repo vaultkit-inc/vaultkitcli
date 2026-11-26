@@ -18,8 +18,8 @@ module Vkit
           registry_dir = File.expand_path(registry_dir)
           out          = File.expand_path(out)
 
-          raise "Policies dir not found: #{policies_dir}" unless Dir.exist?(policies_dir)
-          raise "Registry dir not found: #{registry_dir}" unless Dir.exist?(registry_dir)
+          missing_dir!("Policies", policies_dir, "--policies-dir") unless Dir.exist?(policies_dir)
+          missing_dir!("Registry", registry_dir, "--registry-dir") unless Dir.exist?(registry_dir)
 
           git = Vkit::Policy::GitState.new(Dir.pwd)
           source = source_for(git, version, inputs, allow_dirty)
@@ -61,16 +61,40 @@ module Vkit
             puts "   Checksum: #{bundle.dig("bundle", "checksum")}"
             puts "   Output:   #{out}"
             print_policy_summary(bundle, policies_dir)
+
+            respond(
+              { "org" => bundle.dig("bundle", "org_slug"), "bundle_version" => bundle.dig("bundle", "bundle_version"),
+                "checksum" => bundle.dig("bundle", "checksum"), "output" => out, "dirty" => source[:dirty] == true,
+                "policies" => bundle["policies"].length,
+                "packs" => Array(bundle.dig("bundle", "installed_packs")).map do |p|
+                  { "name" => p["name"], "version" => p["version"], "policies" => Array(p["policy_ids"]).length }
+                end },
+              ["vkit policy deploy --bundle #{relative(out)} --format json"]
+            )
           end
         rescue Vkit::CLI::CommandError => e
+          raise if json?
+
           puts e.render
           exit 1
         rescue Vkit::Policy::ValidationError => e
+          raise if json?
+
           puts e.message
           exit 1
         end
 
         private
+
+        # Message as before; the code is for --format json.
+        def missing_dir!(what, dir, flag)
+          raise "#{what} dir not found: #{dir}" unless json?
+
+          raise Vkit::CLI::CommandError.new(
+            "#{what} dir not found: #{dir}", code: "not_a_project",
+            fix: ["Run this from a VaultKit project (`vkit init`), or pass #{flag} <dir>."]
+          )
+        end
 
         # The bundle's source block. commit_sha is the commit the policies are
         # in, from git only; --version only names the bundle. Refuses to bundle

@@ -12,12 +12,19 @@ module Vkit
         DEFAULT_PATH = File.join("datasets", "registry.yaml")
 
         def call(dir:, format: "human")
+          # Exit codes, json or not: 0 no differences, 1 differences, 2 error.
+          Vkit::CLI::Output.error_exit_code = 2 if json?
           ensure_project!(dir)
 
           dir  = File.expand_path(dir)
           path = File.join(dir, DEFAULT_PATH)
 
           unless File.exist?(path)
+            if json?
+              raise Vkit::CLI::CommandError.new("No local registry.yaml found.", code: "registry_not_found",
+                                                fix: ["Run `vkit registry export --format json` to create it."])
+            end
+
             puts "❌ No local registry.yaml found."
             exit 2
           end
@@ -42,8 +49,11 @@ module Vkit
             )
 
             if format == "json"
-              puts JSON.pretty_generate(diff)
-              exit diff["datasets"].empty? ? 0 : 1
+              changed = !diff["datasets"].empty?
+              respond(diff.merge("changed" => changed),
+                      [],
+                      exit_code: changed ? 1 : 0)
+              return
             else
               Vkit::Core::RegistryDiffPrinter.print(diff)
               exit diff["datasets"].empty? ? 0 : 1
@@ -51,6 +61,8 @@ module Vkit
           end
 
         rescue StandardError => e
+          raise if json?
+
           puts "❌ Error: #{e.message}"
           exit 2
         end

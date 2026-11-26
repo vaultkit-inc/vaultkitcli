@@ -19,6 +19,7 @@ module Vkit
             token = resolve_token!(org, token_ref)
 
             unless options[:force]
+              confirmation_needed!("Revoking agent token #{token["prefix"]}", "--yes") if json?
               confirm!(token)
             end
 
@@ -35,6 +36,7 @@ module Vkit
             puts "📝 Reason: #{reason}"
             puts
             puts "✅ The token is no longer valid, and its grants are revoked."
+            respond({ "id" => token["id"], "name" => token["name"], "prefix" => token["prefix"], "revoked" => true })
           end
         end
 

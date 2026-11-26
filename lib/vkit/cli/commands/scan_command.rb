@@ -20,10 +20,105 @@ module Vkit
             )
 
             print_diff(response)
+            respond(json_result(org, datasource_name, mode, response), scan_next_steps(datasource_name, mode)) if json?
           end
         end
 
         private
+
+        # Every column of the scanned datasets, for review: the registry as
+        # the control plane has it, with the scan's changes on top (the diff
+        # only lists what changed). unknown: the classifier couldn't place
+        # it; unreviewed: nobody has set it yet (the starter pack masks those
+        # for agents).
+        def json_result(org, datasource, mode, response)
+          datasets = Array(response.dig("diff", "datasets"))
+          registry = registry_export(org)
+
+          {
+            "datasource" => datasource,
+            "mode" => mode,
+            "applied" => response["applied"] == true,
+            "scan_id" => response["scan_id"],
+            "columns_complete" => !registry.nil?,
+            "datasets" => datasets.map { |d| json_dataset(d, registry && registry[d["name"]]) },
+            "unreviewed_count" => datasets.sum { |d| unreviewed_for(d).size },
+            "suggestion_count" => datasets.sum { |d| suggestions_for(d).size }
+          }.compact
+        end
+
+        def registry_export(org)
+          export = authenticated_client.get("/api/v1/orgs/#{org}/registries/export")
+          export.is_a?(Hash) ? export : nil
+        rescue StandardError => e
+          warn "⚠️  Couldn't read the registry (#{e.message}); listing only the columns that changed."
+          nil
+        end
+
+        def json_dataset(dataset, registered)
+          changes = dataset["changes"] || {}
+          columns = {}
+
+          (registered && registered["fields"] || {}).each do |name, f|
+            columns[name] = column(name, f["type"], f["sensitivity"], f["category"])
+          end
+          Array(changes["added_fields"]).each do |f|
+            f = { "name" => f } unless f.is_a?(Hash)
+            columns[f["name"]] = column(f["name"], f["type"], f["sensitivity"], Array(f["tags"]).first, "added")
+          end
+          Array(changes["changed_fields"]).each do |f|
+            f = { "name" => f } unless f.is_a?(Hash)
+            to = f["to"] || {}
+            columns[f["name"]] = column(f["name"], to["type"], to["sensitivity"], Array(to["tags"]).first, "changed")
+          end
+          Array(changes["removed_fields"]).each do |f|
+            name = f.is_a?(Hash) ? f["name"] : f
+            columns[name] = (columns[name] || column(name, nil, nil, nil)).merge("change" => "removed")
+          end
+
+          unreviewed = unreviewed_for(dataset)
+          suggestions = suggestions_for(dataset).to_h { |s| [s["name"], s] }
+          unreviewed.each { |name| columns[name] ||= column(name, nil, "unknown", nil) }
+          suggestions.each_key { |name| columns[name] ||= column(name, nil, nil, nil) }
+
+          {
+            "name" => dataset["name"],
+            "changed" => changes.values.any? { |v| Array(v).any? },
+            "columns" => columns.values.map do |c|
+              c.merge("unreviewed" => unreviewed.include?(c["name"]),
+                      "unknown" => c["sensitivity"] == "unknown" || unreviewed.include?(c["name"]),
+                      "suggestion" => suggestion(suggestions[c["name"]]))
+            end
+          }
+        end
+
+        def column(name, type, sensitivity, category, change = nil)
+          { "name" => name, "type" => type, "sensitivity" => sensitivity, "category" => category, "change" => change }
+        end
+
+        def suggestion(s)
+          return nil unless s
+
+          {
+            "current" => classification(s["current"]),
+            "suggested" => classification(s["suggested"])
+          }
+        end
+
+        def classification(c)
+          c ||= {}
+          { "sensitivity" => c["sensitivity"], "category" => Array(c["tags"]).first, "tags" => Array(c["tags"]) }
+        end
+
+        def scan_next_steps(datasource, mode)
+          if mode == "apply"
+            # Between the two: review datasets/registry.yaml (each unknown
+            # column's sensitivity) and commit it.
+            ["vkit registry export --force --format json", "vkit policy bundle --format json"]
+          else
+            ["vkit scan #{datasource} --mode apply --format json"]
+          end
+        end
 
         def print_diff(response)
           diff     = response["diff"] || {}

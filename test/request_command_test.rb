@@ -5,8 +5,11 @@ require "minitest/autorun"
 require "json"
 require_relative "../lib/vkit/cli/commands/base_command"
 require_relative "../lib/vkit/cli/commands/request_command"
+require_relative "support/envelope"
 
 class RequestCommandResultTest < Minitest::Test
+  include EnvelopeHelper
+
   def handle(result, format: "table")
     status = nil
     out, = capture_io do
@@ -55,11 +58,32 @@ class RequestCommandResultTest < Minitest::Test
     refute_includes out, "Approver roles:"
   end
 
-  def test_json_format_prints_the_response_unchanged
-    out, status = handle(pending, format: "json")
+  def json_handle(result)
+    run_json { Vkit::CLI::Commands::RequestCommand.new.send(:handle_result, result, { format: "json" }) }
+  end
 
-    assert_equal 0, status
-    assert_equal "pending_approval", JSON.parse(out)["status"]
+  def test_json_format_wraps_the_response_in_the_envelope
+    envelope, code, = json_handle(pending)
+
+    assert_equal 0, code
+    assert_equal "ok", envelope["status"]
+    assert_equal "pending_approval", envelope.dig("result", "status")
+    assert_equal ["vkit requests list --state pending --format json"], envelope["next"]
+  end
+
+  def test_json_denied_is_an_error_with_exit_2
+    envelope, code, = json_handle({ "status" => "denied", "reason" => "PII", "request_id" => "r1" })
+
+    assert_equal 2, code
+    assert_equal "error", envelope["status"]
+    assert_equal "request_denied", envelope.dig("error", "code")
+    assert_equal "PII", envelope.dig("error", "message")
+  end
+
+  def test_json_granted_says_to_fetch
+    envelope, = json_handle({ "status" => "granted", "grant_ref" => "g_1", "expires_at" => "2026-11-04T21:00:00Z" })
+
+    assert_equal ["vkit fetch --grant g_1 --format json"], envelope["next"]
   end
 
   def test_unknown_statuses_are_still_reported

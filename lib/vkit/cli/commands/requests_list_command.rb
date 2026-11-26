@@ -27,6 +27,8 @@ module Vkit
         private
 
         def render(rows, format)
+          return respond({ "requests" => rows }) if format == "json"
+
           if rows.empty?
             puts "📭 No requests found"
             return

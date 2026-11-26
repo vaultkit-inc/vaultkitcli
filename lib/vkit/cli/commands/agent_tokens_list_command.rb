@@ -26,6 +26,8 @@ module Vkit
         private
 
         def print_result(tokens, format)
+          return respond({ "tokens" => tokens }, ["vkit agents tokens create --name <name> --secret-file <path> --format json"]) if format == "json"
+
           if tokens.empty?
             puts "No tokens found."
             return

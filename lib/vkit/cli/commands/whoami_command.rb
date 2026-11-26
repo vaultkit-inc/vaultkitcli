@@ -7,6 +7,9 @@ module Vkit
 
           puts "👤 #{user['email']} " \
                "(role: #{user['role']}, org: #{user['organization_slug']})"
+          respond({ "email" => user["email"], "role" => user["role"],
+                    "organization" => user["organization_slug"], "endpoint" => credential_store.endpoint,
+                    "verified" => !@cached })
         end
 
         private
@@ -15,7 +18,7 @@ module Vkit
           token = credential_store.token
           endpoint = credential_store.endpoint
 
-          raise "Not logged in" if token.nil? || endpoint.nil?
+          raise not_logged_in("Not logged in") if token.nil? || endpoint.nil?
 
           client = Vkit::Core::AuthClient.new(base_url: endpoint)
           server_user = client.whoami(token)
@@ -25,12 +28,18 @@ module Vkit
 
           server_user
         rescue => e
+          # An agent checks the session with whoami, so a cached identity
+          # would hide an expired or unreachable one.
+          raise if json?
+
           fallback_local_user(e)
         end
 
         def fallback_local_user(error)
           user = credential_store.user
-          raise "Not logged in" if user.nil?
+          raise not_logged_in("Not logged in") if user.nil?
+
+          @cached = true
 
           warn "⚠️ Unable to verify identity with server"
           warn "⚠️ #{error.message}"

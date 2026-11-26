@@ -10,30 +10,45 @@ module Vkit
         true
       end
 
+      # --format json on every command: one JSON envelope on stdout, logs on
+      # stderr (see Vkit::CLI::Output).
+      FORMAT_OPTION = {
+        type: :string, default: "human", enum: %w[human json],
+        desc: "Output format: human, or json (one JSON object on stdout, logs on stderr)"
+      }.freeze
+
       # LOGIN
       desc "login", "Authenticate with VaultKit control plane"
       option :endpoint, type: :string
       option :email, type: :string
+      option :password_prompt, type: :boolean, default: false,
+                               desc: "Read the password from the terminal (/dev/tty), never from stdin"
+      option :format, **FORMAT_OPTION
       def login
         Commands::LoginCommand.new(
           endpoint: options[:endpoint],
-          email: options[:email]
+          email: options[:email],
+          password_prompt: options[:password_prompt]
         ).call
       end
 
       desc "whoami", "Show current identity"
+      option :format, **FORMAT_OPTION
       def whoami
         Commands::WhoamiCommand.new.call
       end
 
       desc "logout", "Clear stored credentials"
+      option :format, **FORMAT_OPTION
       def logout
         Commands::LogoutCommand.new.call
       end
 
       desc "reset", "Clear all stored credentials and configuration"
+      option :yes, type: :boolean, default: false, desc: "Don't ask for confirmation"
+      option :format, **FORMAT_OPTION
       def reset
-        Commands::ResetCommand.new.call
+        Commands::ResetCommand.new.call(yes: options[:yes])
       end
 
       desc "init", "Initialize a new VaultKit project"
@@ -41,6 +56,7 @@ module Vkit
       option :with, type: :string, desc: "Comma-separated policy packs to install (e.g. starter,ai_safety)"
       option :git, type: :boolean, default: true,
                    desc: "Run git init when the folder isn't in a git repository (--no-git to skip)"
+      option :format, **FORMAT_OPTION
       def init
         packs = options[:with]&.split(",")&.map(&:strip)
 
@@ -69,12 +85,14 @@ module Vkit
       # APPROVALS
       desc "approval:list", "List all approval requests"
       option :state, type: :string, default: "pending", enum: %w[pending approved denied all]
+      option :format, **FORMAT_OPTION
       define_method("approval:list") do
         Commands::ApprovalCommand.new.call_list(state: options[:state])
       end
 
       desc "approval:approve ID", "Approve a pending request"
       option :ttl, type: :numeric, desc: "Grant lifetime in seconds (default and maximum: the policy's TTL)"
+      option :format, **FORMAT_OPTION
       define_method("approval:approve") do |id|
         Commands::ApprovalCommand.new.call_approve(
           id: id,
@@ -84,6 +102,7 @@ module Vkit
 
       desc "approval:deny ID", "Deny a pending request"
       option :reason, type: :string
+      option :format, **FORMAT_OPTION
       define_method("approval:deny") do |id|
         Commands::ApprovalCommand.new.call_deny(
           id: id,
@@ -108,7 +127,9 @@ module Vkit
       # FETCH
       desc "fetch --grant ID", "Fetch data from Funl using a valid grant"
       option :grant, type: :string, required: true
-      option :format, type: :string, default: "json", enum: %w[json table]
+      # No default: without --format the rows print as JSON after a summary
+      # line, as they always have; --format json is the envelope.
+      option :format, type: :string, enum: %w[json table], desc: "json (one JSON object) or table; default: JSON rows"
       def fetch
         Commands::FetchCommand.new.call(
           grant_ref: options[:grant],
@@ -119,7 +140,8 @@ module Vkit
       desc "grant:revoke", "Revoke a grant"
       option :grant, type: :string, required: true
       option :reason, type: :string, required: true, desc: "Why it's revoked; recorded in the audit log"
-      option :force, type: :boolean, default: false
+      option :force, type: :boolean, default: false, aliases: "--yes", desc: "Don't ask for confirmation"
+      option :format, **FORMAT_OPTION
       define_method("grant:revoke") do
         Commands::GrantRevokeCommand.new.call(
           grant_ref: options[:grant],
@@ -135,16 +157,24 @@ module Vkit
         option :id, required: true
         option :engine, required: true
         option :username, required: true
-        option :password, required: true
+        option :password, type: :string,
+                          desc: "Deprecated: ends up in shell history. Use --password-prompt or --password-env"
+        option :password_prompt, type: :boolean, default: false,
+                                 desc: "Type the password into the terminal (/dev/tty, echo off)"
+        option :password_env, type: :string, banner: "VAR_NAME",
+                              desc: "Read the password from this environment variable"
         option :config, required: true
         option :region, required: true, desc: "EU | US | CA | APAC"
         option :environment, required: true, desc: "production | staging | development | sandbox"
+        option :format, **FORMAT_OPTION
         def add
           Commands::DatasourceCommand.new.add(
             id: options[:id],
             engine: options[:engine],
             username: options[:username],
             password: options[:password],
+            password_prompt: options[:password_prompt],
+            password_env: options[:password_env],
             config: options[:config],
             region: options[:region],
             environment: options[:environment]
@@ -152,11 +182,13 @@ module Vkit
         end
 
         desc "list", "List all datasources (admin only)"
+        option :format, **FORMAT_OPTION
         def list
           Commands::DatasourceCommand.new.list
         end
 
         desc "get ID", "Fetch a datasource by ID (admin only)"
+        option :format, **FORMAT_OPTION
         def get(id)
           Commands::DatasourceCommand.new.get(id)
         end
@@ -165,6 +197,7 @@ module Vkit
       # SCAN
       desc "scan DATASOURCE", "Scan datasource and diff against registry"
       option :mode, type: :string, default: "diff_only", enum: %w[diff_only apply]
+      option :format, **FORMAT_OPTION
       def scan(datasource)
         Commands::ScanCommand.new.call(
           datasource,
@@ -179,7 +212,9 @@ module Vkit
         desc "export", "Export runtime registry to datasets/registry.yaml"
         option :dir, type: :string, default: "."
         option :out, type: :string, desc: "Custom output path"
-        option :force, type: :boolean, default: false
+        option :force, type: :boolean, default: false, aliases: "--yes",
+                       desc: "Overwrite an existing registry.yaml without asking"
+        option :format, **FORMAT_OPTION
         def export
           Commands::RegistryExportCommand.new.call(
             dir: options[:dir],
@@ -212,6 +247,7 @@ module Vkit
                          desc: "Name the bundle (defaults to the git commit); the commit is still recorded from git"
         option :allow_dirty, type: :boolean, default: false,
                              desc: "Bundle uncommitted changes anyway; the bundle is recorded as dirty"
+        option :format, **FORMAT_OPTION
 
         def bundle
           Commands::PolicyBundleCommand.new.call(
@@ -227,6 +263,7 @@ module Vkit
         desc "validate", "Validate a compiled policy bundle"
         option :bundle, type: :string, default: "dist/policy_bundle.json"
         option :schema, type: :string
+        option :format, **FORMAT_OPTION
 
         def validate
           Commands::PolicyValidateCommand.new.call(
@@ -254,7 +291,8 @@ module Vkit
         desc "revoke", "Revoke a policy bundle version"
         option :bundle_version, type: :string, required: true
         option :reason, type: :string
-        option :force, type: :boolean, default: false
+        option :force, type: :boolean, default: false, aliases: "--yes", desc: "Don't ask for confirmation"
+        option :format, **FORMAT_OPTION
 
         def revoke
           Commands::PolicyRevokeCommand.new.call(
@@ -268,6 +306,7 @@ module Vkit
         subcommand "pack", Class.new(Thor) {
 
           desc "list", "List policy packs"
+          option :format, **FORMAT_OPTION
           option :dir, type: :string, default: "."
           def list
             Commands::PolicyPackListCommand.new.call(
@@ -276,6 +315,7 @@ module Vkit
           end
 
           desc "add NAME", "Install a policy pack"
+          option :format, **FORMAT_OPTION
           option :dir, type: :string, default: "."
           option :force, type: :boolean, default: false
           def add(name)
@@ -287,6 +327,7 @@ module Vkit
           end
 
           desc "remove NAME", "Remove an installed policy pack"
+          option :format, **FORMAT_OPTION
           option :dir, type: :string, default: "."
           option :force, type: :boolean, default: false
           def remove(name)
@@ -298,6 +339,7 @@ module Vkit
           end
 
           desc "info NAME", "Show information about a policy pack"
+          option :format, **FORMAT_OPTION
           option :dir, type: :string, default: "."
           def info(name)
             Commands::PolicyPackInfoCommand.new.call(
@@ -309,8 +351,9 @@ module Vkit
           desc "upgrade [NAME]", "Upgrade installed policy packs (all if NAME omitted)"
           option :dir, type: :string, default: "."
           option :force, type: :boolean, default: false
-          option :restore, type: :boolean, default: false,
+          option :restore, type: :boolean, default: false, aliases: "--yes",
                            desc: "Restore an up-to-date pack's missing files without asking"
+          option :format, **FORMAT_OPTION
           def upgrade(name = nil)
             Commands::PolicyPackUpgradeCommand.new.call(
               pack_name: name,
@@ -342,6 +385,9 @@ module Vkit
 
           # agents tokens create
           desc "create", "Create a new agent token (automation identity)"
+          option :secret_file, type: :string, banner: "PATH",
+                               desc: "Write the token to this file (mode 600) instead of printing it"
+          option :format, **FORMAT_OPTION
           option :name, required: true, desc: "Human-readable name (e.g. billing-bot)"
           option :expires_in, type: :string, desc: "Token lifetime (e.g. 1h, 24h, 30d)"
           option :role, type: :string, default: "agent", desc: "Role assigned to this token"
@@ -360,7 +406,8 @@ module Vkit
               role: options[:role],
               tenant: options[:tenant],
               clearance: options[:clearance],
-              region: options[:region]
+              region: options[:region],
+              secret_file: options[:secret_file]
             )
           end
 
@@ -368,7 +415,8 @@ module Vkit
           desc "revoke", "Revoke an agent token"
           option :token, required: true, desc: "Token ID or prefix"
           option :reason, type: :string, required: true, desc: "Why it's revoked; recorded in the audit log"
-          option :force, type: :boolean, default: false, desc: "Skip confirmation"
+          option :force, type: :boolean, default: false, aliases: "--yes", desc: "Skip confirmation"
+          option :format, **FORMAT_OPTION
           def revoke
             Commands::AgentTokensRevokeCommand.new.call(
               token: options[:token],

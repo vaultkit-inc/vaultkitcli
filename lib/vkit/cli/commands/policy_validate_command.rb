@@ -5,7 +5,7 @@ require_relative "../../policy/pack_integrity"
 module Vkit
   module CLI
     module Commands
-      class PolicyValidateCommand
+      class PolicyValidateCommand < BaseCommand
         def call(bundle_path:, schema_path:)
           bundle_path = File.expand_path(bundle_path)
           raise "Bundle not found: #{bundle_path}" unless File.exist?(bundle_path)
@@ -21,7 +21,10 @@ module Vkit
           Vkit::Policy::PackIntegrity.check_bundle!(JSON.parse(File.read(bundle_path)))
         
           puts "✅ Policy bundle is valid"
+          respond({ "valid" => true, "bundle" => bundle_path }, ["vkit policy deploy --format json"])
         rescue Vkit::Policy::ValidationError => e
+          raise if json?
+
           puts e.message
           exit 1
         end        

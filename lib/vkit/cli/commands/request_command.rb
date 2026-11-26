@@ -17,6 +17,9 @@ module Vkit
             aql =
               if aql_str&.strip&.length&.positive?
                 JSON.parse(aql_str)
+              elsif json? && $stdin.tty?
+                raise Vkit::CLI::CommandError.new("No AQL given.", code: "aql_required",
+                                                  fix: ["Pass the request with --aql '<json>' or pipe it on stdin."])
               else
                 JSON.parse(STDIN.read)
               end
@@ -43,6 +46,29 @@ module Vkit
 
         private
 
+        # A denial is the request's answer, not a CLI failure, but it's what
+        # the agent asked for not happening, so it's an error (exit 2, as
+        # before). Queued and granted are ok, with what to run next.
+        def respond_json(result)
+          status = result["status"]
+          if status == "denied"
+            raise Vkit::CLI::CommandError.new(
+              result["reason"].to_s.empty? ? "Request denied by policy" : result["reason"],
+              code: "request_denied", exit_code: 2,
+              fix: ["Policy denied this request; ask for fewer or less sensitive fields, or ask an admin " \
+                    "about the policy (request_id #{result["request_id"]})."]
+            )
+          end
+
+          next_steps =
+            case status
+            when "granted" then ["vkit fetch --grant #{result["grant_ref"]} --format json"]
+            when "pending_approval", "queued" then ["vkit requests list --state pending --format json"]
+            else []
+            end
+          respond(result, next_steps)
+        end
+
         # Every response names its request; the console's Activity page
         # finds it by this id.
         def print_request_id(result)
@@ -66,10 +92,7 @@ module Vkit
         def handle_result(result, options)
           status = result["status"]
 
-          if options[:format] == "json"
-            puts JSON.pretty_generate(result)
-            exit status == "denied" ? 2 : 0
-          end
+          return respond_json(result) if options[:format] == "json"
 
           case status
           when "denied"

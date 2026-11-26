@@ -8,6 +8,18 @@ module Vkit
     class AuthClient
       DEFAULT_BASE_URL = ENV["VKIT_ENDPOINT"] || "http://localhost:3000"
 
+      # A non-2xx answer. The message is as it always was; status and body
+      # let --format json say why (an expired login is a 401).
+      class HTTPError < RuntimeError
+        attr_reader :status, :body
+
+        def initialize(status, body)
+          @status = status.to_i
+          @body = body
+          super("HTTP #{status}: #{body}")
+        end
+      end
+
       def initialize(base_url: DEFAULT_BASE_URL)
         @base_url = base_url.chomp("/")
       end
@@ -95,7 +107,7 @@ module Vkit
         return res if allow_non_200
 
         unless res.is_a?(Net::HTTPSuccess)
-          raise "HTTP #{res.code}: #{res.body}"
+          raise HTTPError.new(res.code, res.body)
         end
 
         res

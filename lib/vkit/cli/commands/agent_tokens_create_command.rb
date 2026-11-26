@@ -7,7 +7,18 @@ module Vkit
   module CLI
     module Commands
       class AgentTokensCreateCommand < BaseCommand
+        # secret_file: write the token there (mode 600) instead of printing
+        # it. Under --format json it's required, so the token never lands in
+        # an agent's transcript.
         def call(options)
+          secret_file = options[:secret_file]
+          if json? && secret_file.to_s.empty?
+            needs_input!("secret_file_required", "Creating an agent token under --format json needs --secret-file.",
+                         ["Rerun with --secret-file <path> (a path the person chooses, outside the repository); " \
+                          "the token is written there with mode 600 and never printed."])
+          end
+          refuse_existing!(secret_file) if secret_file
+
           with_auth do
             user = credential_store.user
             org  = user["organization_slug"]
@@ -20,6 +31,7 @@ module Vkit
 
             token  = response.fetch("token")
             secret = response.fetch("secret")
+            Vkit::CLI::Output.register_secret(secret)
 
             puts "🔐 AGENT TOKEN ISSUED (shown once)"
             puts
@@ -36,19 +48,39 @@ module Vkit
             puts "⏳ Expires At: #{token["expires_at"] || "never"}"
             puts
 
-            puts "🔑 TOKEN"
-            puts "────────────────────────────────────────"
-            puts secret
-            puts "────────────────────────────────────────"
-            puts
+            if secret_file
+              write_secret(secret_file, secret)
+              puts "🔑 Token written to #{secret_file} (mode 600)"
+              puts
+            else
+              puts "🔑 TOKEN"
+              puts "────────────────────────────────────────"
+              puts secret
+              puts "────────────────────────────────────────"
+              puts
+            end
 
             puts "⚠️  Store this token securely. It cannot be retrieved again."
 
             warn_if_tenant_scoped(org) unless token["tenant"]
+            respond(token.reject { |k, _| k == "secret" }
+                         .merge(secret_file ? { "secret_file" => File.expand_path(secret_file) } : {}))
           end
         end
 
         private
+
+        # Checked before the token is issued, so a bad path doesn't lose it.
+        def refuse_existing!(path)
+          return unless File.exist?(path)
+
+          raise Vkit::CLI::CommandError.new("#{path} already exists; not overwriting it.", code: "secret_file_exists",
+                                            fix: ["Pass a --secret-file path that doesn't exist yet."])
+        end
+
+        def write_secret(path, secret)
+          File.open(path, File::WRONLY | File::CREAT | File::EXCL, 0o600) { |f| f.write(secret) }
+        end
 
         WARNING_NAMES = 5
 

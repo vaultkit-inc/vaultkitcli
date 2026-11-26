@@ -4,6 +4,7 @@
 require "minitest/autorun"
 require "json"
 require "tmpdir"
+require_relative "support/envelope"
 require_relative "../lib/vkit/cli/commands/base_command"
 require_relative "../lib/vkit/cli/commands/policy_deploy_command"
 require_relative "../lib/vkit/policy/approval_groups"
@@ -70,6 +71,8 @@ class ApprovalGroupsTest < Minitest::Test
 end
 
 class PolicyDeployWarningsTest < Minitest::Test
+  include EnvelopeHelper
+
   class FakeClient
     attr_reader :gets
 
@@ -106,6 +109,11 @@ class PolicyDeployWarningsTest < Minitest::Test
       store = FakeStore.new({ "organization_slug" => "acme" })
       command.define_singleton_method(:credential_store) { store }
       command.define_singleton_method(:authenticated_client) { client }
+      if format == "json"
+        envelope, = run_json { command.call(bundle_path: path, org: nil, activate: true, format: format) }
+        return envelope
+      end
+
       out, = capture_io { command.call(bundle_path: path, org: nil, activate: true, format: format) }
       out
     end
@@ -131,23 +139,24 @@ class PolicyDeployWarningsTest < Minitest::Test
   end
 
   def test_json_output_carries_the_warnings
-    out = deploy(FakeClient.new(post: deployed("warnings" => [WARNING])), format: "json")
+    envelope = deploy(FakeClient.new(post: deployed("warnings" => [WARNING])), format: "json")
 
-    assert_equal({ "status" => "deployed", "org" => "acme", "bundle_version" => "v2", "state" => "active",
-                   "checksum" => "abc", "warnings" => [WARNING] }, JSON.parse(out))
+    assert_equal "ok", envelope["status"]
+    assert_equal({ "org" => "acme", "bundle_version" => "v2", "state" => "active", "checksum" => "abc",
+                   "warnings" => [WARNING], "already_deployed" => false }, envelope["result"])
   end
 
   def test_applies_the_same_rule_for_older_control_planes
     client = FakeClient.new(post: deployed, get: { "groups" => [{ "name" => "security", "member_count" => 0 }] })
-    out = deploy(client, format: "json")
+    envelope = deploy(client, format: "json")
 
     assert_equal ["/api/v1/orgs/acme/approval_groups"], client.gets
-    assert_equal [WARNING], JSON.parse(out)["warnings"]
+    assert_equal [WARNING], envelope.dig("result", "warnings")
   end
 
   def test_a_failure_to_list_groups_never_fails_the_deploy
-    out = deploy(FakeClient.new(post: deployed, get: RuntimeError.new("boom")), format: "json")
+    envelope = deploy(FakeClient.new(post: deployed, get: RuntimeError.new("boom")), format: "json")
 
-    assert_equal [], JSON.parse(out)["warnings"]
+    assert_equal [], envelope.dig("result", "warnings")
   end
 end

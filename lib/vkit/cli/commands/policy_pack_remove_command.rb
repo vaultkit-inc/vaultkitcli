@@ -18,7 +18,10 @@ module Vkit
           puts "✅ Removed #{pack_name}"
           puts "   Files deleted: #{removed}"
           puts "\nRun 'vkit policy bundle' to recompile."
+          respond({ "pack" => pack_name, "files_deleted" => removed }, ["vkit policy bundle --format json"])
         rescue StandardError => e
+          raise if json?
+
           puts "❌ Error: #{e.message}"
           exit 1
         end

@@ -22,6 +22,7 @@ module Vkit
 
           credential_store.clear_token!
           puts "🧹 Logged out"
+          respond({ "logged_out" => true }, ["vkit login"])
         end
       end
     end

@@ -16,6 +16,8 @@ module Vkit
             raise "Not authenticated. Please login." if org.nil? || org.empty?
 
             unless force
+              confirmation_needed!("Revoking grant #{grant_ref}", "--yes") if json?
+
               puts "⚠️  You are about to revoke grant: #{grant_ref}"
               puts "   Organization: #{org}"
               puts "   Reason: #{reason}"
@@ -35,6 +37,7 @@ module Vkit
             puts "✅ Grant revoked"
             puts "   Grant:   #{grant_ref}"
             puts "   Revoked: #{response["revoked_at"]}"
+            respond({ "grant" => grant_ref, "revoked_at" => response["revoked_at"] })
           end
         end
       end
