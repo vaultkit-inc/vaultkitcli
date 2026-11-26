@@ -389,8 +389,11 @@ end
 class IdempotencyTest < Minitest::Test
   include JsonTestHelpers
 
-  def existing_client
-    FakeClient.new([:get, "#{DS}/shop"] => { "name" => "shop", "engine" => "postgres", "config" => {} })
+  EXISTING = { "name" => "shop", "engine" => "postgres", "config" => {} }.freeze
+
+  # A control plane from before vaultkit#126 refuses the duplicate name.
+  def existing_client(post: Vkit::CLI::API::APIError.new(422, "Name has already been taken"))
+    FakeClient.new([:get, "#{DS}/shop"] => EXISTING, [:post, DS] => post)
   end
 
   def test_datasource_add_for_an_existing_id_changes_nothing
@@ -401,7 +404,52 @@ class IdempotencyTest < Minitest::Test
     assert_equal 0, code
     assert_equal true, envelope.dig("result", "already_existed")
     assert_equal false, envelope.dig("result", "credential_updated")
-    assert FakeBackend.client.calls.none? { |verb, _, _| verb == :post }
+    posted = FakeBackend.client.calls.select { |verb, _, _| verb == :post }.map(&:last)
+    assert(posted.all? { |body| !body.key?(:password) }, "no credential is sent for an existing id")
+  end
+
+  def test_the_same_settings_again_is_already_existed_from_the_control_plane
+    FakeBackend.client = existing_client(post: EXISTING.merge("already_existed" => true, "credential_updated" => false))
+
+    envelope, code, = ds_add
+
+    assert_equal 0, code
+    assert_equal true, envelope.dig("result", "already_existed")
+  end
+
+  def test_different_settings_are_datasource_exists_with_a_fix
+    conflict = Vkit::CLI::API::APIError.from_body(409, { "error" => "Datasource shop already exists with different settings.",
+                                                        "code" => "datasource_exists" })
+    FakeBackend.client = existing_client(post: conflict)
+
+    envelope, code, = ds_add
+
+    assert_equal 1, code
+    assert_equal "datasource_exists", envelope.dig("error", "code")
+    assert_includes envelope.dig("error", "fix"), "new id"
+  end
+
+  def test_a_setup_token_refused_on_a_set_up_organization_says_so
+    refused = Vkit::CLI::API::APIError.from_body(403, { "error" => "This organization is already set up",
+                                                       "code" => "setup_scope_forbidden" })
+    FakeBackend.client = existing_client(post: refused)
+
+    envelope, code, = ds_add
+
+    assert_equal 1, code
+    assert_equal "setup_scope_forbidden", envelope.dig("error", "code")
+    assert_includes envelope.dig("error", "fix"), "vkit login"
+  end
+
+  def test_a_new_control_plane_answering_already_existed_to_the_create
+    FakeBackend.client = FakeClient.new([:get, "#{DS}/shop"] => not_found,
+                                        [:post, DS] => EXISTING.merge("already_existed" => true))
+    ENV["SHOP_PW"] = SECRET
+
+    envelope, code, = ds_add("--password-env", "SHOP_PW")
+
+    assert_equal 0, code
+    assert_equal true, envelope.dig("result", "already_existed")
   end
 
   def test_an_existing_id_never_asks_for_the_password
@@ -499,6 +547,43 @@ class PolicyDeployIdempotencyTest < Minitest::Test
     assert_equal 1, code
     assert_equal "bundle_version_exists", envelope.dig("error", "code")
     assert_includes envelope.dig("error", "fix"), "vkit policy bundle"
+  end
+
+  # vaultkit#126 on: the same bundle again is a 200 with already_existed.
+  def test_the_same_bundle_again_is_already_deployed_without_a_409
+    envelope, code, = deploy(FakeClient.new([:post, BUNDLES] => { "status" => "ok", "bundle_version" => "abc123",
+                                                                  "checksum" => "c1", "state" => "active",
+                                                                  "already_existed" => true }))
+
+    assert_equal 0, code
+    assert_equal true, envelope.dig("result", "already_deployed")
+    assert_equal true, envelope.dig("result", "already_existed")
+    assert_equal "active", envelope.dig("result", "state")
+  end
+
+  def test_the_same_bundle_uploaded_but_not_active_is_already_existed_not_deployed
+    envelope, code, = deploy(FakeClient.new([:post, BUNDLES] => { "bundle_version" => "abc123", "state" => "uploaded",
+                                                                  "already_existed" => true }))
+
+    assert_equal 0, code
+    assert_equal false, envelope.dig("result", "already_deployed")
+    assert_equal true, envelope.dig("result", "already_existed")
+  end
+
+  def test_new_409_codes_map_with_fixes_and_skip_the_active_version_guess
+    { "bundle_version_exists" => "vkit policy bundle", "bundle_checksum_exists" => "already uploaded" }.each do |code, fix|
+      conflict = Vkit::CLI::API::APIError.from_body(409, { "error" => "conflict", "code" => code,
+                                                          "bundle_version" => "abc123", "state" => "active" })
+      client = FakeClient.new([:post, BUNDLES] => conflict)
+
+      envelope, exit_code, = deploy(client)
+
+      assert_equal 1, exit_code
+      assert_equal code, envelope.dig("error", "code")
+      assert_includes envelope.dig("error", "fix"), fix
+      assert_equal "abc123", envelope.dig("result", "conflicting_version")
+      assert client.calls.none? { |_, path, _| path.end_with?("/setup") }, "a coded 409 is not guessed at"
+    end
   end
 
   def test_a_dirty_bundle_is_never_assumed_deployed

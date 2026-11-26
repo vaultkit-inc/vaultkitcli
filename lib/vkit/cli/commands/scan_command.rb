@@ -39,6 +39,11 @@ module Vkit
             "datasource" => datasource,
             "mode" => mode,
             "applied" => response["applied"] == true,
+            # Nothing to change: control planes from vaultkit#126 on say so
+            # (a setup token's apply on a set-up organization is then a no-op,
+            # not refused); older ones only by an empty diff.
+            "unchanged" => response["unchanged"] == true ||
+                           datasets.none? { |d| (d["changes"] || {}).values.any? { |v| Array(v).any? } },
             "scan_id" => response["scan_id"],
             "columns_complete" => !registry.nil?,
             "datasets" => datasets.map { |d| json_dataset(d, registry && registry[d["name"]]) },

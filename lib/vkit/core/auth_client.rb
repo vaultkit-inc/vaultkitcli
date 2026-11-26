@@ -2,6 +2,7 @@ require "net/http"
 require "uri"
 require "json"
 require "openssl"
+require_relative "user_agent"
 
 module Vkit
   module Core
@@ -90,6 +91,48 @@ module Vkit
         http_request(uri, req, allow_non_200: true)
       end      
 
+      # Setup sessions (device authorization, RFC 8628 style): ask for one,
+      # then poll until an admin approves or denies it in the console.
+      def start_setup_session
+        uri = uri_for("/api/setup_sessions")
+        req = Net::HTTP::Post.new(uri)
+        req["Content-Type"] = "application/json"
+        req["Accept"] = "application/json"
+        req.body = "{}"
+
+        parse_json(http_request(uri, req))
+      end
+
+      # [HTTP status, body]: 200 with the token once approved; 400 with
+      # error authorization_pending, slow_down, access_denied, expired_token
+      # or invalid_grant; 429 rate_limited.
+      def poll_setup_session(device_code)
+        uri = uri_for("/api/setup_sessions/token")
+        req = Net::HTTP::Post.new(uri)
+        req["Content-Type"] = "application/json"
+        req["Accept"] = "application/json"
+        req.body = JSON.dump(device_code: device_code)
+
+        res = http_request(uri, req, allow_non_200: true)
+        body = begin
+          JSON.parse(res.body.to_s)
+        rescue JSON::ParserError
+          { "error" => res.body.to_s }
+        end
+        [res.code.to_i, body]
+      end
+
+      # A setup token ending itself (DELETE /api/setup_sessions/current).
+      # Raises HTTPError when the control plane doesn't confirm it.
+      def end_setup_session(token)
+        uri = uri_for("/api/setup_sessions/current")
+        req = Net::HTTP::Delete.new(uri)
+        req["Authorization"] = "Bearer #{token}"
+        req["Accept"] = "application/json"
+
+        parse_json(http_request(uri, req))
+      end
+
       private
 
       def uri_for(path)
@@ -102,6 +145,7 @@ module Vkit
       end
 
       def http_request(uri, req, allow_non_200: false)
+        req["User-Agent"] = UserAgent.to_s
         res = build_http(uri).request(req)
 
         return res if allow_non_200

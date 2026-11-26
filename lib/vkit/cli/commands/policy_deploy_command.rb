@@ -40,11 +40,13 @@ module Vkit
               begin
                 upload(org_slug, bundle, activate)
               rescue Vkit::CLI::API::APIError => e
+                raise conflict(e) if NEW_CONFLICT_CODES.include?(e.code)
                 raise unless json?
 
                 already_deployed(org_slug, bundle, e)
               end
-            return respond(response) if response["already_deployed"]
+            response = reuploaded(org_slug, response) if response["already_existed"]
+            return respond(response) if response["already_deployed"] || response["already_existed"]
 
             warnings = deploy_warnings(org_slug, bundle, response)
 
@@ -64,6 +66,36 @@ module Vkit
         end
 
         private
+
+        # The 409s a control plane from vaultkit#126 on answers with a code.
+        # Uploading the same bundle again isn't one of them: that's a 200
+        # with already_existed (see #reuploaded).
+        NEW_CONFLICT_CODES = %w[bundle_version_exists bundle_checksum_exists].freeze
+
+        # The same bundle (version and checksum) uploaded before: nothing
+        # was uploaded. With --activate the control plane also activates it
+        # if it wasn't active, and doesn't say which, so "already deployed"
+        # means it is the active bundle now without a new upload.
+        def reuploaded(org_slug, response)
+          version = response["bundle_version"]
+          active = response["state"] == "active"
+          if active
+            puts "✓ Bundle #{version} was already uploaded and is the active one; nothing new to deploy."
+          else
+            puts "✓ Bundle #{version} was already uploaded (state: #{response['state']}); nothing new to upload."
+          end
+          { "org" => org_slug, "bundle_version" => version, "state" => response["state"],
+            "checksum" => response["checksum"], "warnings" => [], "already_deployed" => active,
+            "already_existed" => true }
+        end
+
+        # The conflicting version and its state come with the 409.
+        def conflict(error)
+          Vkit::CLI::CommandError.new(
+            error.error.to_s, code: error.code, fix: [Vkit::CLI::ErrorMap::CONFLICT_FIXES.fetch(error.code)],
+            result: { "conflicting_version" => error.body["bundle_version"], "state" => error.body["state"] }.compact
+          )
+        end
 
         # Each bundle version can be uploaded once. The control plane says
         # so with a 409 (a 500 in production, where its catch-all answers

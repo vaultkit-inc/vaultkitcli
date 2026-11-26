@@ -132,4 +132,21 @@ class ScanCommandDiffTest < Minitest::Test
 
     refute_includes out, "unreviewed"
   end
+
+  def json_result(response)
+    cmd = Vkit::CLI::Commands::ScanCommand.new
+    cmd.define_singleton_method(:registry_export) { |_org| {} }
+    cmd.send(:json_result, "acme", "shop", "apply", response)
+  end
+
+  # vaultkit#126: an apply that changes nothing says unchanged (a setup
+  # token's apply on a set-up organization is then a no-op, not refused).
+  def test_unchanged_comes_from_the_control_plane_or_an_empty_diff
+    datasets = [{ "name" => "orders", "changes" => no_changes }]
+
+    assert_equal true, json_result({ "applied" => false, "unchanged" => true, "diff" => { "datasets" => datasets } })["unchanged"]
+    assert_equal true, json_result({ "applied" => true, "diff" => { "datasets" => datasets } })["unchanged"]
+    changed = [{ "name" => "orders", "changes" => no_changes.merge("added_fields" => ["x"]) }]
+    assert_equal false, json_result({ "applied" => true, "diff" => { "datasets" => changed } })["unchanged"]
+  end
 end
