@@ -16,6 +16,7 @@ module Vkit
           puts "\nPolicy Pack: #{meta['name']}"
           puts "Version:     v#{meta['version']}"
           puts "Layer:       #{meta['layer'] || 'n/a'}"
+          puts "Description: #{meta['description']}" if meta["description"]
 
           deps = Array(meta["dependencies"])
           puts "Dependencies: #{deps.empty? ? 'none' : deps.join(', ')}"
@@ -39,7 +40,7 @@ module Vkit
           end
 
           respond({ "name" => meta["name"], "version" => meta["version"], "layer" => meta["layer"],
-                    "dependencies" => deps, "priority_band" => band, "policies" => policies.map { |p| p["id"] },
+                    "description" => meta["description"], "dependencies" => deps, "priority_band" => band, "policies" => policies.map { |p| p["id"] },
                     "installed" => !entry.nil?, "installed_version" => entry && entry["version"] },
                   entry ? [] : ["vkit policy pack add #{pack_name} --format json"])
         rescue StandardError => e

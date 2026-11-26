@@ -10,6 +10,7 @@ require "yaml"
 require "tmpdir"
 require "fileutils"
 require "open3"
+require "digest"
 require_relative "support/envelope"
 
 # Swaps the control plane and the saved login for fakes, only while a test
@@ -483,6 +484,22 @@ class IdempotencyTest < Minitest::Test
     end
   end
 
+  def test_policy_pack_info_shows_the_description_from_metadata_yaml
+    description = YAML.safe_load(File.read(File.expand_path("../lib/vkit/policy/packs/ai_safety/metadata.yaml", __dir__)))
+                      .dig("__pack_meta", "description")
+    Dir.mktmpdir do |root|
+      dir = File.join(root, "p")
+      cli("init", "--dir", dir, "--no-git")
+
+      envelope, code, = cli("policy", "pack", "info", "ai_safety", "--dir", dir)
+      assert_equal 0, code
+      assert_equal description, envelope.dig("result", "description")
+
+      out, = capture_io { Vkit::CLI::Commands::PolicyPackInfoCommand.new.call(pack_name: "ai_safety", dir: dir) }
+      assert_includes out, "Description: #{description}"
+    end
+  end
+
   def test_policy_pack_add_for_an_installed_pack
     Dir.mktmpdir do |root|
       dir = File.join(root, "p")
@@ -620,7 +637,96 @@ class BundleProvenanceEnvelopeTest < Minitest::Test
         assert_equal "bundle_not_committed", envelope.dig("error", "code")
         assert_includes envelope.dig("error", "message"), "datasets/registry.yaml"
         assert_includes envelope.dig("error", "fix"), "git commit"
+        refute_includes envelope.dig("error", "fix"), "--allow-dirty"
+        assert_equal "git add -A -- config/policies datasets .vkit/packs.yaml; git commit -m \"Update VaultKit policies\"", envelope.dig("error", "fix")
       end
+    end
+  end
+end
+
+# setup.md reruns every step: bundling the same commit again, later, and
+# deploying it must be a no-op, against a control plane that (like
+# vaultkit's PolicyBundles::Validator and #existing_upload) recomputes the
+# checksum over the whole bundle and takes each version once.
+class BundleRebuildRedeployTest < Minitest::Test
+  include JsonTestHelpers
+
+  GIT_ENV = { "GIT_AUTHOR_NAME" => "T", "GIT_AUTHOR_EMAIL" => "t@x.test",
+              "GIT_COMMITTER_NAME" => "T", "GIT_COMMITTER_EMAIL" => "t@x.test" }.freeze
+
+  def control_plane
+    uploaded = {}
+    post = lambda do |body|
+      bundle = body[:bundle]
+      meta = bundle["bundle"]
+      recomputed = Digest::SHA256.hexdigest(
+        Vkit::Policy::BundleCompiler.canonical_json(bundle.merge("bundle" => meta.merge("checksum" => "")))
+      )
+      raise "checksum mismatch" unless recomputed == meta["checksum"]
+
+      version = meta["bundle_version"]
+      answer = { "status" => "ok", "bundle_version" => version, "checksum" => meta["checksum"], "state" => "active" }
+      if uploaded.key?(version)
+        next answer.merge("already_existed" => true) if uploaded[version] == meta["checksum"]
+
+        raise Vkit::CLI::API::APIError.from_body(409, { "error" => "already uploaded with other contents",
+                                                        "code" => "bundle_version_exists",
+                                                        "bundle_version" => version, "state" => "active" })
+      end
+      uploaded[version] = meta["checksum"]
+      answer.merge("warnings" => [])
+    end
+    FakeClient.new([:post, "/api/v1/orgs/acme/policy_bundles"] => post)
+  end
+
+  # Bundles and deploys at `now`, after touching every input file.
+  def bundle_and_deploy(now)
+    FileUtils.touch(Dir.glob("{config,datasets,.vkit}/**/*", File::FNM_DOTMATCH).select { |f| File.file?(f) }, mtime: now)
+    stubbing(Time, :now, -> { now }) do
+      bundled, code, = cli("policy", "bundle")
+      assert_equal 0, code, bundled.inspect
+      deployed, code, = cli("policy", "deploy", "--bundle", "dist/policy_bundle.json")
+      assert_equal 0, code, deployed.inspect
+      [bundled, deployed, JSON.parse(File.read("dist/policy_bundle.json"))]
+    end
+  end
+
+  def in_committed_project
+    ENV.update(GIT_ENV)
+    Dir.mktmpdir do |root|
+      dir = File.join(root, "p")
+      cli("init", "--dir", dir)
+      Dir.chdir(dir) do
+        system("git", "add", "-A", out: File::NULL) && system("git", "commit", "-qm", "Policies", out: File::NULL) or flunk "commit failed"
+        yield
+      end
+    end
+  end
+
+  def test_rebuilding_the_same_commit_later_gives_the_same_checksum_and_redeploys_as_already_deployed
+    FakeBackend.client = control_plane
+    in_committed_project do
+      first_bundle, first_deploy, first = bundle_and_deploy(Time.utc(2026, 11, 1, 9))
+      second_bundle, second_deploy, second = bundle_and_deploy(Time.utc(2026, 11, 2, 17))
+
+      assert_equal false, first_deploy.dig("result", "already_deployed")
+      assert_equal first_bundle.dig("result", "checksum"), second_bundle.dig("result", "checksum")
+      assert_equal first, second
+      assert_equal true, second_deploy.dig("result", "already_deployed"), second_deploy.inspect
+      commit_time = Time.iso8601(`git show -s --format=%cI HEAD`.strip).utc.iso8601
+      assert_equal commit_time, second.dig("bundle", "created_at")
+    end
+  end
+
+  def test_a_new_commit_is_a_new_version_with_a_new_checksum
+    in_committed_project do
+      first, = cli("policy", "bundle")
+      File.write("datasets/registry.yaml", "# edited\n", mode: "a")
+      system("git", "commit", "-qam", "Edit", out: File::NULL) or flunk "commit failed"
+      second, = cli("policy", "bundle")
+
+      refute_equal first.dig("result", "bundle_version"), second.dig("result", "bundle_version")
+      refute_equal first.dig("result", "checksum"), second.dig("result", "checksum")
     end
   end
 end

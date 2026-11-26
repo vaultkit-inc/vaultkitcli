@@ -2,6 +2,7 @@
 
 # Run with: ruby -Ilib test/bundle_git_test.rb
 require "minitest/autorun"
+require "minitest/mock"
 require "tmpdir"
 require "yaml"
 require "json"
@@ -117,7 +118,8 @@ class BundleGitTest < Minitest::Test
     assert_includes out, "config/policies/starter__01__deny_credentials.yaml"
     assert_includes out, "git add -A -- config/policies datasets .vkit/packs.yaml"
     assert_includes out, "git commit -m"
-    assert_includes out, "--allow-dirty"
+    # Agents are told never to bundle dirty; the fix is only to commit.
+    refute_includes out, "--allow-dirty"
     assert_nil written
   end
 
@@ -179,6 +181,43 @@ class BundleGitTest < Minitest::Test
     assert_equal true, source["dirty"]
     assert_equal head, source["commit_sha"]
     assert_valid(written)
+  end
+
+  def test_the_same_commit_bundled_again_later_has_the_same_created_at_and_checksum
+    commit_all
+    bundle
+    first = written
+    later = Time.now + 3600
+    FileUtils.touch(Dir.glob(File.join(@dir, "{config,datasets,.vkit}/**/*"), File::FNM_DOTMATCH), mtime: later)
+
+    Time.stub(:now, later) { bundle }
+
+    assert_equal first["bundle"]["checksum"], written["bundle"]["checksum"]
+    assert_equal Time.iso8601(`git -C #{@dir} show -s --format=%cI HEAD`.strip).utc.iso8601, written["bundle"]["created_at"]
+  end
+
+  def test_a_dirty_bundle_is_stable_for_the_same_files_and_changes_with_them
+    commit_all
+    path = edit_policy
+    bundle(allow_dirty: true)
+    first = written
+
+    Time.stub(:now, Time.now + 3600) { bundle(allow_dirty: true) }
+    assert_equal first["bundle"]["checksum"], written["bundle"]["checksum"]
+
+    File.write(path, File.read(path) + "# edited again\n")
+    File.utime(Time.now + 7200, Time.now + 7200, path)
+    bundle(allow_dirty: true)
+    refute_equal first["bundle"]["checksum"], written["bundle"]["checksum"]
+  end
+
+  def test_a_version_without_a_repo_is_stable_for_the_same_files
+    bundle(version: "v1.2")
+    first = written
+
+    Time.stub(:now, Time.now + 3600) { bundle(version: "v1.2") }
+
+    assert_equal first["bundle"]["checksum"], written["bundle"]["checksum"]
   end
 
   def test_no_repo_and_no_version_is_refused_before_anything_is_written

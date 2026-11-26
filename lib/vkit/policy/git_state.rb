@@ -2,6 +2,7 @@
 
 require "open3"
 require "pathname"
+require "time"
 
 module Vkit
   module Policy
@@ -24,6 +25,14 @@ module Vkit
       def head
         out, ok = git("rev-parse", "--verify", "--quiet", "HEAD")
         ok && !out.empty? ? out : nil
+      end
+
+      # When rev was committed (its committer date), or nil.
+      def commit_time(rev)
+        out, ok = git("show", "-s", "--format=%cI", rev, "--")
+        ok && !out.empty? ? Time.iso8601(out) : nil
+      rescue ArgumentError
+        nil
       end
 
       def branch
