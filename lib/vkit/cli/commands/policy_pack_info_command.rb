@@ -31,13 +31,20 @@ module Vkit
             puts "  - #{p['id']}"
           end
 
-          if manager.installed?(pack_name)
-            entry = manager.installed_packs[pack_name]
+          entry = manager.installed_packs[pack_name]
+          if entry
             puts "\nInstalled: yes (v#{entry['version']})"
           else
             puts "\nInstalled: no"
           end
+
+          respond({ "name" => meta["name"], "version" => meta["version"], "layer" => meta["layer"],
+                    "dependencies" => deps, "priority_band" => band, "policies" => policies.map { |p| p["id"] },
+                    "installed" => !entry.nil?, "installed_version" => entry && entry["version"] },
+                  entry ? [] : ["vkit policy pack add #{pack_name} --format json"])
         rescue StandardError => e
+          raise if json?
+
           puts "❌ Error: #{e.message}"
           exit 1
         end

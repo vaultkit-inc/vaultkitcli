@@ -17,6 +17,9 @@ module Vkit
 
             since_time = parse_since(since)
             seen = {}
+            # A stream: one JSON object per approval, as before, rather than
+            # a single envelope (which a watch never gets to the end of).
+            Vkit::CLI::Output.streamed! if json?
 
             if format == "table"
               puts "⏳ Watching approval queue (Ctrl+C to stop)…"
@@ -85,11 +88,9 @@ module Vkit
         end
 
         def print_json(obj, pretty:)
-          if pretty
-            puts JSON.pretty_generate(obj)
-          else
-            puts JSON.generate(obj)
-          end
+          out = json? ? Vkit::CLI::Output.stdout : $stdout
+          out.puts(pretty ? JSON.pretty_generate(obj) : JSON.generate(obj))
+          out.flush
         end
 
         def normalize(a)

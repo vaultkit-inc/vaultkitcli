@@ -20,6 +20,7 @@ The VaultKit CLI (`vkit`) is the primary interface for interacting with the Vaul
 - [Command Reference](#command-reference)
 - [Configuration](#configuration)
 - [Advanced Usage](#advanced-usage)
+- [Driving vkit from a coding agent](docs/AGENTS.md)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 
@@ -558,7 +559,7 @@ vkit fetch --grant gr_abc123xyz --format json
 vkit fetch --grant gr_abc123xyz --format csv --output results.csv
 
 # Pipe to jq for processing
-vkit fetch --grant gr_abc123xyz --format json | jq '.data[] | select(.revenue > 1000)'
+vkit fetch --grant gr_abc123xyz --format json | jq '.result.rows[] | select(.revenue > 1000)'
 ```
 
 ---
@@ -577,8 +578,13 @@ vkit datasource add --id <ID> --engine <ENGINE> [OPTIONS]
 - `--id` — Unique datasource identifier (required)
 - `--engine` — Database engine: `postgres`, `mysql`, `snowflake`, `bigquery` (required)
 - `--username` — Database username
-- `--password` — Database password
+- `--password-prompt` — Type the password into the terminal (read from `/dev/tty`, echo off)
+- `--password-env VAR_NAME` — Read the password from an environment variable
+- `--password` — Deprecated: the password ends up in shell history. Still works, with a warning
 - `--config` — JSON configuration (host, port, database, etc.)
+
+Adding an `--id` that already exists changes nothing and succeeds (`already_existed: true` under
+`--format json`). The control plane can't change a stored credential, so a password given then is not used.
 - `--credential-backend` — Secret backend: `vaultkit`, `vault`, `aws-secrets`
 
 **Examples:**
@@ -589,7 +595,7 @@ vkit datasource add \
   --id production_pg \
   --engine postgres \
   --username vaultkit_ro \
-  --password $DB_PASSWORD \
+  --password-prompt \
   --config '{
     "host": "db.production.internal",
     "port": 5432,
@@ -605,7 +611,7 @@ vkit datasource add \
   --id production_mysql \
   --engine mysql \
   --username app_reader \
-  --password $MYSQL_PASSWORD \
+  --password-env MYSQL_PASSWORD \
   --config '{
     "host": "mysql.production.internal",
     "port": 3306,
@@ -775,7 +781,7 @@ vkit scan production_pg --mode apply
 
 **Scan All Datasources:**
 ```bash
-for ds in $(vkit datasource list --format json | jq -r '.[].id'); do
+for ds in $(vkit datasource list --format json | jq -r '.result.datasources[].name'); do
   echo "Scanning $ds..."
   vkit scan $ds
 done
@@ -999,7 +1005,7 @@ REQUESTS=(
 
 for aql in "${REQUESTS[@]}"; do
   echo "Processing: $aql"
-  vkit request --aql "$aql" --format json | jq -r '.grant_id' >> grants.txt
+  vkit request --aql "$aql" --format json | jq -r '.result.grant_ref // empty' >> grants.txt
 done
 
 echo "Generated grants:"
@@ -1014,7 +1020,7 @@ cat grants.txt
 
 PENDING=$(vkit approval:list --state pending --format json)
 
-echo "$PENDING" | jq -r '.[].id' | while read -r request_id; do
+echo "$PENDING" | jq -r '.result.approvals[].id' | while read -r request_id; do
   echo "Approving request: $request_id"
   vkit approval:approve "$request_id" --ttl 3600 --notes "Auto-approved for testing"
 done
@@ -1073,17 +1079,17 @@ jobs:
 
 **Extract specific fields:**
 ```bash
-vkit requests list --format json | jq '.[] | select(.state == "approved") | {id, dataset, requester}'
+vkit requests list --format json | jq '.result.requests[] | select(.state == "approved") | {id, dataset, requester}'
 ```
 
 **Count requests by state:**
 ```bash
-vkit requests list --format json | jq 'group_by(.state) | map({state: .[0].state, count: length})'
+vkit requests list --format json | jq '.result.requests | group_by(.state) | map({state: .[0].state, count: length})'
 ```
 
 **Find high-value transactions:**
 ```bash
-vkit fetch --grant gr_abc123 --format json | jq '.data[] | select(.amount > 10000)'
+vkit fetch --grant gr_abc123 --format json | jq '.result.rows[] | select(.amount > 10000)'
 ```
 
 ---

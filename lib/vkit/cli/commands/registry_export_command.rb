@@ -16,7 +16,10 @@ module Vkit
             dir = File.expand_path(dir)
             path = out ? File.expand_path(out, dir) : File.join(dir, DEFAULT_PATH)
 
-            if File.exist?(path) && !force
+            existed = File.exist?(path)
+            if existed && !force
+              overwrite_needed!(dir, path) if json?
+
               decision = handle_existing_registry(dir: dir, path: path)
               return if decision == :abort
             end            
@@ -33,8 +36,18 @@ module Vkit
 
             puts "✅ Registry exported to:"
             puts "   #{relative(dir, path)}"
+
+            respond(
+              { "path" => path, "overwritten" => existed,
+                "datasets" => registry_data.is_a?(Hash) ? registry_data.keys.sort : [] },
+              # After reviewing datasets/registry.yaml and committing it.
+              ["git add datasets/registry.yaml && git commit -m \"Review VaultKit registry\"",
+               "vkit policy bundle --format json"]
+            )
           end
         rescue StandardError => e
+          raise if json?
+
           puts "❌ Error: #{e.message}"
           exit 1
         end
@@ -42,7 +55,23 @@ module Vkit
         private
 
         def ensure_project!(dir)
+          raise not_a_project if json? && !Dir.exist?(File.join(dir, ".vkit"))
           raise "Not a VaultKit project (missing .vkit/)" unless Dir.exist?(File.join(dir, ".vkit"))
+        end
+
+        def not_a_project
+          Vkit::CLI::CommandError.new("Not a VaultKit project (missing .vkit/)", code: "not_a_project",
+                                      fix: ["Run `vkit init` first, or pass --dir <project>."])
+        end
+
+        # Overwriting replaces any review already done in the file, so it's
+        # the person's call (vkit init's placeholder file included).
+        def overwrite_needed!(dir, path)
+          needs_input!("overwrite_confirmation_required",
+                       "#{relative(dir, path)} already exists and exporting would replace it.",
+                       ["Check `vkit registry diff --format json`; if replacing the file is fine " \
+                        "(it's still vkit init's placeholder, or the person agrees), rerun with --force."],
+                       next_steps: ["vkit registry diff --format json"])
         end
 
         def handle_existing_registry(dir:, path:)

@@ -16,6 +16,7 @@ module Vkit
               "/api/v1/orgs/#{org}/approvals?state=#{state}"
             )
 
+            respond({ "state" => state, "approvals" => rows })
             if rows.empty?
               puts empty_message_for(state)
               return
@@ -54,6 +55,8 @@ module Vkit
               body: body
             )
 
+            respond({ "id" => id }.merge(res.is_a?(Hash) ? res : {}),
+                    res["grant_ref"] ? ["vkit fetch --grant #{res["grant_ref"]} --format json"] : [])
             if res["status"] == "pending"
               puts "✍️  Signed off on request #{id}"
               puts "   → Approved by: #{ApprovalRoles.describe(Array(res["approved_roles"]))}"
@@ -72,6 +75,10 @@ module Vkit
             user = credential_store.user
             org  = user["organization_slug"]
 
+            if reason.nil? && json?
+              needs_input!("reason_required", "Denying a request needs a reason; it's recorded in the audit log.",
+                           ["Ask the person why it's denied, then rerun with --reason \"<why>\"."])
+            end
             reason ||= prompt_reason
             raise "Denial reason cannot be empty" if reason.to_s.empty?
 
@@ -80,6 +87,7 @@ module Vkit
               body: { reason: reason }
             )
 
+            respond({ "id" => id, "state" => "denied", "reason" => reason })
             puts "🚫 Denied request #{id}"
             puts "   → Reason: #{reason}"
           end

@@ -6,7 +6,10 @@ module Vkit
   module CLI
     module Commands
       class FetchCommand < BaseCommand
-        def call(grant_ref:, format: "json")
+        # format nil: the summary line, then the rows as JSON (as before).
+        # "json": the envelope, with rows and meta in result.
+        def call(grant_ref:, format: nil)
+          @grant_ref = grant_ref
           with_auth do
             user = credential_store.user
             org  = user["organization_slug"]
@@ -25,6 +28,9 @@ module Vkit
         private
 
         def print_result(rows, meta, format)
+          return respond({ "grant" => @grant_ref, "rows" => rows, "meta" => meta }) if format == "json"
+
+          format ||= "json"
           puts "✅ OK — #{rows.size} rows"
 
           if meta.any?

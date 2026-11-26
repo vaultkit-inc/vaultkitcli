@@ -13,6 +13,8 @@ module Vkit
 
           packs = manager.list_status
 
+          respond({ "packs" => packs.map { |p| p.merge("drift" => !!p["drift"]) } })
+
           if packs.empty?
             puts "No policy packs available."
             return
@@ -38,6 +40,8 @@ module Vkit
             end
           end
         rescue StandardError => e
+          raise if json?
+
           puts "❌ Error: #{e.message}"
           exit 1
         end

@@ -12,6 +12,8 @@ module Vkit
             raise "Not authenticated. Please login." if org.nil? || org.empty?
 
             unless force
+              confirmation_needed!("Revoking policy bundle #{bundle_version}", "--yes") if json?
+
               puts "⚠️  You are about to revoke policy bundle version: #{bundle_version}"
               puts "   Organization: #{org}"
               puts "   Reason: #{reason || 'Bundle revoked via CLI'}"
@@ -32,6 +34,8 @@ module Vkit
             puts "   Version:  #{response["bundle_version"]}"
             puts "   Checksum: #{response["checksum"]}"
             puts "   Revoked:  #{response["revoked_at"]}"
+            respond({ "bundle_version" => response["bundle_version"], "checksum" => response["checksum"],
+                      "revoked_at" => response["revoked_at"] })
           end
         end
       end

@@ -1,5 +1,6 @@
 require "json"
 require "json_schemer"
+require_relative "output"
 
 module Vkit
   module CLI
@@ -14,6 +15,13 @@ module Vkit
         errors = @schemer.validate(bundle).to_a
 
         return if errors.empty?
+
+        if Vkit::CLI::Output.json?
+          raise Vkit::CLI::CommandError.new(
+            "Policy bundle validation failed:\n#{errors.map { |err| format_error(err, bundle) }.join("\n")}",
+            code: "bundle_invalid", fix: ["Fix the policies the errors name, then rebuild with `vkit policy bundle`."]
+          )
+        end
 
         puts "\n❌ Policy bundle validation failed\n\n"
 

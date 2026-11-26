@@ -6,12 +6,14 @@ module Vkit
     # An error with a stable code that scripts and agents can match on, and
     # the commands that fix it.
     class CommandError < Error
-      attr_reader :code, :fix
+      attr_reader :code, :fix, :next_steps, :exit_code
 
-      def initialize(message, code:, fix: [])
+      def initialize(message, code:, fix: [], next_steps: [], exit_code: nil)
         super(message)
         @code = code
         @fix = Array(fix)
+        @next_steps = Array(next_steps)
+        @exit_code = exit_code
       end
 
       def to_h
@@ -24,5 +26,10 @@ module Vkit
         lines.join("\n")
       end
     end
+
+    # The command can't go on without something only the person can give: a
+    # secret, a confirmation, a choice. Under --format json it's reported as
+    # status "needs_input" (exit 3) instead of waiting on a prompt.
+    class NeedsInput < CommandError; end
   end
 end

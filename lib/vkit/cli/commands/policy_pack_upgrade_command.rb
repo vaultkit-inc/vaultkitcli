@@ -29,6 +29,7 @@ module Vkit
           end
 
           print_summary(results)
+          respond_json(results, pack_name) if json?
 
           if results.any? { |r| %i[failed missing].include?(r[:status]) }
             if results.any? { |r| r[:status] == :missing }
@@ -40,11 +41,44 @@ module Vkit
 
           puts "\nRun 'vkit policy bundle' to recompile."
         rescue StandardError => e
+          raise if json?
+
           puts "❌ Error: #{e.message}"
           exit 1
         end
 
         private
+
+        # Missing files left unrestored are a question for the person
+        # (restore them?); a failed upgrade is an error.
+        def respond_json(results, pack_name)
+          rows = results.map { |r| json_row(r) }
+          failed = results.find { |r| r[:status] == :failed }
+          if failed
+            raise Vkit::CLI::CommandError.new("#{failed[:name]}: #{failed[:error]}", code: "pack_upgrade_failed",
+                                              fix: ["Fix what the message names, then rerun the upgrade."])
+          end
+          if results.any? { |r| r[:status] == :missing }
+            needs_input!("confirmation_required",
+                         "Installed pack files are missing: #{rows.select { |r| r["status"] == "missing" }
+                           .flat_map { |r| r["missing_files"] }.join(", ")}",
+                         ["Ask the person whether to restore them from the pack; if they agree, rerun " \
+                          "`vkit policy pack upgrade #{pack_name || "<pack>"} --restore`."])
+          end
+
+          respond({ "packs" => rows }, ["vkit policy bundle --format json"])
+        end
+
+        def json_row(r)
+          row = { "name" => r[:name], "status" => r[:status].to_s }
+          row["from"] = r[:old] if r[:old]
+          row["to"] = r[:new] if r[:new]
+          row["version"] = r[:version] if r[:version]
+          row["policies_updated"] = r[:policies] if r[:policies]
+          row["missing_files"] = Array(r[:files]).map { |f| f["path"] } if r[:files]
+          row["error"] = r[:error] if r[:error]
+          row
+        end
 
         def upgrade_single(manager, pack, force)
           summarize(pack, manager.upgrade!(pack, force: force))
@@ -72,7 +106,7 @@ module Vkit
           puts "⚠️  #{r[:name]} #{r[:version]} is installed, but #{r[:files].length} of its files are missing:"
           r[:files].each { |f| puts "   #{f["path"]} (#{f["policy_id"]})" }
 
-          return unless restore || confirm?(input, "Restore them from the pack? [Y/n] ")
+          return unless restore || (!json? && confirm?(input, "Restore them from the pack? [Y/n] "))
 
           manager.restore!(r[:name])
           r[:status] = :restored

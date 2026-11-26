@@ -42,6 +42,8 @@ module Vkit
           req = build_request(method, uri)
           req["Authorization"] = "Bearer #{@token}"
           req["Content-Type"]  = "application/json"
+          # Devise answers a failed login in JSON only when asked to.
+          req["Accept"]        = "application/json"
           req.body = JSON.dump(body) if body
 
           res = Net::HTTP.start(
