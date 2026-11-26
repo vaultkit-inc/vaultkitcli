@@ -6,14 +6,17 @@ module Vkit
     # An error with a stable code that scripts and agents can match on, and
     # the commands that fix it.
     class CommandError < Error
-      attr_reader :code, :fix, :next_steps, :exit_code
+      attr_reader :code, :fix, :next_steps, :exit_code, :result
 
-      def initialize(message, code:, fix: [], next_steps: [], exit_code: nil)
+      # result: what the envelope's result carries alongside the error (for
+      # needs_input, what the person has to be shown).
+      def initialize(message, code:, fix: [], next_steps: [], exit_code: nil, result: nil)
         super(message)
         @code = code
         @fix = Array(fix)
         @next_steps = Array(next_steps)
         @exit_code = exit_code
+        @result = result
       end
 
       def to_h

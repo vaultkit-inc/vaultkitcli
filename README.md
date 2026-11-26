@@ -165,6 +165,68 @@ vkit login --endpoint https://vaultkit.company.com --email you@company.com
 # Session expires: 2024-01-15 18:00:00 UTC
 ```
 
+### `vkit login --setup` (a coding agent setting VaultKit up)
+
+A coding agent can set VaultKit up without your own login: it asks for a
+**setup session**, you approve it in the console, and it gets a token that can
+only do setup (connect datasources, scan schemas, deploy policy bundles) and
+lasts 30 minutes. It works like `gh auth login`.
+
+In a terminal it's one command. It prints a code and the console's approval
+link, opens the link in your browser, and waits:
+
+```bash
+vkit login --setup --endpoint http://localhost:3300
+# 🔐 An admin approves this setup session in the VaultKit console:
+#    1. Open http://localhost:5300/setup/approve
+#    2. Check the code matches: BCDF-1234
+#    3. Approve it (by 14:10, when the request expires)
+# ⏳ Waiting for an admin to approve it...
+# ✅ Setup session approved by you@acme.com for acme; it works until 14:32.
+```
+
+Open the link signed in as an admin, check the code matches what the terminal
+shows, and approve. Only approve a session you just started yourself: anyone
+can start one and send you the link. The approval page shows the requester's
+address and what made the request (`vkit/<version> (<os>; ruby <version>)`).
+
+With `--format json` it's two commands, so the agent can show you the code
+before it waits:
+
+1. `vkit login --setup --format json` returns `needs_input` (exit 3) with
+   `user_code`, `verification_url` and `verification_url_complete` in `result`,
+   and the fix "Ask the person to open the URL, check the code matches, and
+   approve". Running it again returns the same code until the request expires
+   (10 minutes).
+2. `vkit login --setup --wait --format json` polls until you approve (`ok`),
+   deny (`setup_session_denied`), or the request expires
+   (`setup_session_expired`). Add `--timeout <seconds>` to stop sooner; still
+   waiting is `needs_input` again, so rerun it.
+
+`--no-browser` skips opening the link. The token is saved where `vkit login`
+saves yours (it replaces your saved login, and says so), marked as a setup
+session with its expiry; it's never printed. `vkit whoami` shows the expiry.
+
+When a command needs more than setup, or the session ended, you get:
+
+| Code | What happened |
+|---|---|
+| `setup_scope_forbidden` | A setup token can't do this (or can't change an organization that's already set up). An admin must: sign in with `vkit login`. |
+| `setup_session_expired` | The 30 minutes are up. Run `vkit login --setup` again. |
+| `setup_session_revoked` | It was revoked in the console or by `vkit logout`. |
+| `setup_approver_not_admin` | The admin who approved it is no longer an admin. |
+
+`vkit logout` ends a setup session on the control plane
+(`DELETE /api/setup_sessions/current`) and then clears it here. If the control
+plane can't be reached, it's still cleared here, and vkit says the token stays
+valid until it expires (an admin can revoke it on the console's Agents page).
+
+Rerunning setup is safe: a datasource that exists with the same settings, a
+bundle that's already uploaded, and a scan that changes nothing come back as
+`already_existed`, `already_deployed` or `unchanged`, not as errors. A
+datasource id that exists with other settings is `datasource_exists`; a bundle
+version already uploaded with other contents is `bundle_version_exists`.
+
 ### `vkit whoami`
 
 Display the currently authenticated user and session information.

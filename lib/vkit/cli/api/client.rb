@@ -3,6 +3,7 @@
 require "net/http"
 require "uri"
 require "json"
+require_relative "../../core/user_agent"
 
 module Vkit
   module CLI
@@ -34,6 +35,10 @@ module Vkit
           request(method: :patch, path: path, body: body)
         end
 
+        def delete(path)
+          request(method: :delete, path: path)
+        end
+
         private
 
         def request(method:, path:, body: nil)
@@ -44,6 +49,7 @@ module Vkit
           req["Content-Type"]  = "application/json"
           # Devise answers a failed login in JSON only when asked to.
           req["Accept"]        = "application/json"
+          req["User-Agent"]    = Vkit::Core::UserAgent.to_s
           req.body = JSON.dump(body) if body
 
           res = Net::HTTP.start(
@@ -65,6 +71,7 @@ module Vkit
           when :post  then Net::HTTP::Post.new(uri)
           when :put   then Net::HTTP::Put.new(uri)
           when :patch then Net::HTTP::Patch.new(uri)
+          when :delete then Net::HTTP::Delete.new(uri)
           else
             raise ArgumentError, "Unsupported HTTP method: #{method}"
           end
@@ -105,19 +112,22 @@ module Vkit
       # word (token_revoked, token_expired), and request_id finds the request
       # on the console's Activity page.
       class APIError < StandardError
-        attr_reader :status, :error, :code, :request_id
+        attr_reader :status, :error, :code, :request_id, :body
 
         def self.from_body(status, body)
           return new(status, body) unless body.is_a?(Hash)
 
-          new(status, body["error"] || body, code: body["code"], request_id: body["request_id"])
+          new(status, body["error"] || body, code: body["code"], request_id: body["request_id"], body: body)
         end
 
-        def initialize(status, error, code: nil, request_id: nil)
+        # body: the whole JSON answer, for the fields some errors carry
+        # (a 409's bundle_version and state).
+        def initialize(status, error, code: nil, request_id: nil, body: nil)
           @status = status
           @error = error
           @code = code
           @request_id = request_id
+          @body = body.is_a?(Hash) ? body : {}
           super(describe)
         end
 

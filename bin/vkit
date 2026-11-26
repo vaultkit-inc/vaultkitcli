@@ -8,6 +8,14 @@ begin
 
 rescue Vkit::CLI::Error => e
   warn "❌ #{e.message}"
+  fix = Vkit::CLI::ErrorMap.human_fix(e)
+  warn "   Fix: #{fix}" if fix
+  exit 1
+
+rescue Vkit::CLI::API::APIError => e
+  warn e.message
+  fix = Vkit::CLI::ErrorMap.human_fix(e)
+  warn "Fix: #{fix}" if fix
   exit 1
 
 rescue Thor::Error => e

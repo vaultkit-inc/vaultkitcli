@@ -1,3 +1,4 @@
+require "time"
 require_relative "../api/client"
 require_relative "../errors"
 require_relative "../output"
@@ -19,6 +20,7 @@ module Vkit
           unless store.logged_in?
             raise not_logged_in
           end
+          check_setup_session!(store)
 
           yield
         end
@@ -29,6 +31,7 @@ module Vkit
           if requires_auth? && !store.logged_in?
             raise not_logged_in
           end
+          check_setup_session!(store) if requires_auth?
 
           Vkit::CLI::Output.register_secret(store.token)
 
@@ -40,6 +43,25 @@ module Vkit
 
         def requires_auth?
           true
+        end
+
+        # A saved setup session's token past its expiry: say so without a
+        # round trip (the control plane would answer setup_token_expired).
+        def check_setup_session!(store)
+          return unless store.respond_to?(:setup_session)
+
+          expires_at = store.setup_session&.dig("expires_at")
+          return unless expires_at
+
+          expiry = Time.parse(expires_at.to_s)
+          return if expiry > Time.now
+
+          raise Vkit::CLI::CommandError.new(
+            "The setup session expired at #{expiry.localtime.strftime('%H:%M')}.",
+            code: "setup_session_expired", fix: [Vkit::CLI::ErrorMap::SETUP_EXPIRED_FIX]
+          )
+        rescue ArgumentError
+          nil
         end
 
         def credential_store
@@ -60,8 +82,8 @@ module Vkit
           Vkit::CLI::Output.respond(result: result, next_steps: next_steps, exit_code: exit_code)
         end
 
-        def needs_input!(code, message, fix, next_steps: [])
-          raise Vkit::CLI::NeedsInput.new(message, code: code, fix: fix, next_steps: next_steps)
+        def needs_input!(code, message, fix, next_steps: [], result: nil)
+          raise Vkit::CLI::NeedsInput.new(message, code: code, fix: fix, next_steps: next_steps, result: result)
         end
 
         # A yes/no question for the person. Under --format json there's no

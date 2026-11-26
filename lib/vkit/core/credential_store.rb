@@ -29,15 +29,50 @@ module Vkit
         @fallback_path = File.join(Dir.home, ".vkit", "credentials.json")
       end
 
-      def save(endpoint:, token:, user:)
+      # setup: for a setup session's token (`vkit login --setup`), what
+      # marks it as one: { "expires_at", "organization" }. A normal login
+      # saves none, which also drops a setup session's.
+      def save(endpoint:, token:, user:, setup: nil)
         payload = {
           "endpoint" => endpoint,
           "token" => token,
           "user" => user
         }
+        payload["setup"] = setup if setup
 
         store(payload)
         true
+      end
+
+      # The saved login's setup session ({ "expires_at", "organization" }),
+      # or nil for a normal login. Credentials from the environment have
+      # none: the control plane says when a setup token there expires.
+      def setup_session
+        return nil if env_override
+
+        stored_payload&.dig("setup")
+      end
+
+      # A setup session that was requested but not yet approved, kept so
+      # `vkit login --setup --wait` can pick it up in a later command:
+      # { "endpoint", "device_code", "user_code", "verification_url",
+      #   "verification_url_complete", "interval", "expires_at" }.
+      def pending_setup
+        stored_payload&.dig("pending_setup")
+      end
+
+      def save_pending_setup(pending)
+        payload = stored_payload || {}
+        payload["pending_setup"] = pending
+        store(payload)
+      end
+
+      def clear_pending_setup!
+        payload = stored_payload
+        return unless payload&.key?("pending_setup")
+
+        payload.delete("pending_setup")
+        store(payload)
       end
 
       def save_user(user)
@@ -105,6 +140,8 @@ module Vkit
         return unless payload
       
         payload.delete("token")
+        payload.delete("setup")
+        payload.delete("pending_setup")
         store(payload)
       end
 

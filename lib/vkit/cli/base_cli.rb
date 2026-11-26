@@ -23,8 +23,21 @@ module Vkit
       option :email, type: :string
       option :password_prompt, type: :boolean, default: false,
                                desc: "Read the password from the terminal (/dev/tty), never from stdin"
+      option :setup, type: :boolean, default: false,
+                     desc: "Ask an admin to approve a setup session (a 30-minute token that can only set VaultKit up)"
+      option :wait, type: :boolean, default: false,
+                    desc: "With --setup: wait for the session an earlier `vkit login --setup` requested"
+      option :timeout, type: :numeric,
+                       desc: "With --setup: stop waiting after this many seconds (default: until the request expires)"
+      option :browser, type: :boolean, default: true, desc: "With --setup: open the approval page (--no-browser to skip)"
       option :format, **FORMAT_OPTION
       def login
+        if options[:setup] || options[:wait]
+          return Commands::SetupLoginCommand.new(
+            endpoint: options[:endpoint], wait: options[:wait], browser: options[:browser], timeout: options[:timeout]
+          ).call
+        end
+
         Commands::LoginCommand.new(
           endpoint: options[:endpoint],
           email: options[:email],

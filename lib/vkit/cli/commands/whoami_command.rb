@@ -5,11 +5,16 @@ module Vkit
         def call
           user = fetch_user_from_server_or_fallback
 
+          setup = credential_store.respond_to?(:setup_session) ? credential_store.setup_session : nil
+
           puts "👤 #{user['email']} " \
                "(role: #{user['role']}, org: #{user['organization_slug']})"
-          respond({ "email" => user["email"], "role" => user["role"],
-                    "organization" => user["organization_slug"], "endpoint" => credential_store.endpoint,
-                    "verified" => !@cached })
+          puts "   Setup session: setup only, until #{setup['expires_at']}" if setup
+          result = { "email" => user["email"], "role" => user["role"],
+                     "organization" => user["organization_slug"], "endpoint" => credential_store.endpoint,
+                     "verified" => !@cached }
+          result["setup_session"] = { "expires_at" => setup["expires_at"] } if setup
+          respond(result)
         end
 
         private

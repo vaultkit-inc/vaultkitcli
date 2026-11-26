@@ -13,9 +13,12 @@ module Vkit
         # environment variable (password_env). --password still works but is
         # deprecated: it ends up in shell history and agent transcripts.
         #
-        # Adding an id that already exists changes nothing and isn't an error.
-        # The control plane has no way to change a stored credential, so a
-        # password source given for an existing id isn't read.
+        # Adding an id that already exists with the same settings changes
+        # nothing and isn't an error; with different settings it's a 409
+        # datasource_exists (control planes from vaultkit#126 on compare
+        # them; older ones are taken to mean the same). The control plane has
+        # no way to change a stored credential, so a password source given
+        # for an existing id isn't read.
         def add(id:, engine:, username:, config:, region:, environment:, password: nil,
                 password_prompt: false, password_env: nil)
           warn_deprecated_password unless password.nil?
@@ -28,23 +31,16 @@ module Vkit
             config_hash = parse_config(config)
             source = password_source(password, password_prompt, password_env)
 
+            body = { name: id, engine: engine, username: username, region: region.upcase,
+                     environment: environment, config: config_hash }
+
             existing = find(org, id)
-            return already_exists(existing, source) if existing
+            return already_exists(confirm_existing(org, body, existing), source) if existing
 
             password = read_password(source, id) unless source == :flag
 
-            response = authenticated_client.post(
-              "/api/v1/orgs/#{org}/datasources",
-              body: {
-                name: id,
-                engine: engine,
-                username: username,
-                password: password,
-                region: region.upcase,
-                environment: environment,
-                config: config_hash
-              }
-            )
+            response = authenticated_client.post("/api/v1/orgs/#{org}/datasources", body: body.merge(password: password))
+            return already_exists(response, source) if response["already_existed"]
 
             puts "✅ Datasource created:"
             print_datasource(response)
@@ -149,6 +145,20 @@ module Vkit
           raise unless e.status == 404
 
           nil
+        end
+
+        # The id exists: send the settings (no credential) and let the
+        # control plane say whether they match. It answers 200
+        # already_existed when they do and 409 datasource_exists when they
+        # don't (raised as is). An older control plane answers neither (it
+        # refuses the duplicate some other way), so the existing one stands.
+        def confirm_existing(org, body, existing)
+          response = authenticated_client.post("/api/v1/orgs/#{org}/datasources", body: body)
+          response.is_a?(Hash) && response["already_existed"] ? response : existing
+        rescue Vkit::CLI::API::APIError => e
+          raise if e.code == "datasource_exists" || e.code.to_s.start_with?("setup_")
+
+          existing
         end
 
         def already_exists(existing, source)
